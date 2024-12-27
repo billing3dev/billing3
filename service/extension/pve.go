@@ -25,18 +25,71 @@ type pveResp[T any] struct {
 	Data T `json:"data"`
 }
 
-func (p *PVE) getApiBaseURL(server *database.Server) string {
-	u := url.URL{
-		Scheme: "https",
-		Host:   server.Settings["address"] + ":" + server.Settings["port"],
-		Path:   "api2/json",
-	}
-	return u.String()
-}
-
 // pveAuth returns CSRFPreventionToken and ticket
 func (p *PVE) pveAuth(base string, username string, password string) (string, string, error) {
+	form := url.Values{}
+	form.Set("username", username)
+	form.Set("password", password)
 
+	httpResp, err := p.httpClient.Post(base+"/access/ticket", "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", "", fmt.Errorf("auth: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	resp := pveResp[struct {
+		CSRFPreventionToken string `json:"CSRFPreventionToken"`
+		Ticket              string `json:"ticket"`
+		Username            string `json:"username"`
+	}]{}
+	err = json.NewDecoder(httpResp.Body).Decode(&resp)
+	if err != nil {
+		return "", "", fmt.Errorf("auth: %w", err)
+	}
+	return resp.Data.CSRFPreventionToken, resp.Data.Ticket, nil
+}
+
+func (p *PVE) apiGet(api string, resp any, ticket string) error {
+	req, err := http.NewRequest("GET", api, nil)
+	if err != nil {
+		return fmt.Errorf("api get: %w", err)
+	}
+	req.AddCookie(&http.Cookie{Name: "PVEAuthCookie", Value: ticket})
+
+	httpResp, err := p.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("api get: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	err = json.NewDecoder(httpResp.Body).Decode(resp)
+	if err != nil {
+		return fmt.Errorf("api get: %w", err)
+	}
+	return nil
+}
+
+func (p *PVE) apiPost(api string, body url.Values, resp any, csrf, ticket string) error {
+	req, err := http.NewRequest("POST", api, strings.NewReader(body.Encode()))
+	if err != nil {
+		return fmt.Errorf("api post: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "PVEAuthCookie", Value: ticket})
+	req.Header.Set("CSRFPreventionToken", csrf)
+
+	httpResp, err := p.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("api post: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	err = json.NewDecoder(httpResp.Body).Decode(resp)
+	if err != nil {
+		return fmt.Errorf("api post: %w", err)
+	}
+
+	return nil
 }
 
 func (p *PVE) Action(serviceId int32, action string) error {
@@ -61,6 +114,8 @@ func (p *PVE) Action(serviceId int32, action string) error {
 		disk := s.Settings["disk"]
 		memory := s.Settings["memory"]
 		servers := s.Settings["servers"]
+		vmType := s.Settings["vm_type"]
+		kvmTemplateVmid := s.Settings["kvm_template_vmid"]
 
 		serverIds := make([]int, 0)
 		for _, s := range strings.Split(servers, ",") {
@@ -88,7 +143,20 @@ func (p *PVE) Action(serviceId int32, action string) error {
 		port := server.Settings["port"]
 		username := server.Settings["username"]
 		password := server.Settings["password"]
-		ips := server.Settings["ips"]
+		node := server.Settings["node"]
+		//ips := server.Settings["ips"]
+		baseUrl := fmt.Sprintf("https://%s:%s/api2/json", address, port)
+
+		slog.Info("pve create", "server id", serverId, "servers", servers, "cpu", cpu, "disk", disk, "memory", memory, "pve base", baseUrl, "node", node, "vm type", vmType, "kvm template vmid", kvmTemplateVmid)
+
+		// pve auth
+		csrf, ticket, err := p.pveAuth(baseUrl, username, password)
+		if err != nil {
+			return fmt.Errorf("pve: %w", err)
+		}
+
+		// calculate new vmid
+		newVmid := 200000 + serviceId
 
 		// save server id
 		s.Settings["server"] = strconv.Itoa(serverId)
@@ -141,12 +209,22 @@ func (p *PVE) Init() error {
 }
 
 func (p *PVE) ProductSettings(inputs map[string]string) ([]ProductSetting, error) {
-	return []ProductSetting{
+	s := []ProductSetting{
+		{Name: "servers", DisplayName: "Servers", Type: "servers"},
 		{Name: "disk", DisplayName: "Disk (GB)", Type: "string", Regex: "^\\d+"},
 		{Name: "memory", DisplayName: "Memory (MB)", Type: "string", Regex: "^\\d+"},
 		{Name: "cpu", DisplayName: "CPU Cores", Type: "string", Regex: "^\\d+"},
-		{Name: "servers", DisplayName: "Servers", Type: "servers"},
-	}, nil
+		{Name: "vm_type", DisplayName: "VM Type", Type: "select", Values: []string{"kvm", "lxc"}},
+	}
+
+	vmType, _ := inputs["vm_type"]
+	if vmType == "kvm" {
+		s = append(s, ProductSetting{Name: "kvm_template_vmid", DisplayName: "KVM Template VMID", Type: "string", Regex: "^\\d+"})
+	} else if vmType == "lxc" {
+		s = append(s, ProductSetting{Name: "lxc_template", DisplayName: "LXC Template", Type: "string", Regex: "^.+"})
+	}
+
+	return s, nil
 }
 
 func (p *PVE) ServerSettings() []ServerSettings {
@@ -155,6 +233,7 @@ func (p *PVE) ServerSettings() []ServerSettings {
 		{Name: "port", DisplayName: "Port", Type: "string", Placeholder: "8006", Regex: "^\\d+$"},
 		{Name: "username", DisplayName: "Username", Type: "string", Placeholder: "root@pam", Regex: "^.+$"},
 		{Name: "password", DisplayName: "Password", Type: "string", Regex: "^.+$"},
+		{Name: "node", DisplayName: "Node", Type: "string", Regex: "^.+$"},
 		{Name: "ips", DisplayName: "IP Addresses (one per line)", Type: "text", Placeholder: "10.2.3.100/24\n10.2.3.101/24\n10.2.3.102/24\n10.2.3.103/24"},
 	}
 }
