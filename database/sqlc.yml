@@ -1,0 +1,46 @@
+version: "2"
+
+sql:
+  - engine: "postgresql"
+    queries: "query.sql"
+    schema: "./schema"
+
+    gen:
+      go:
+        package: "database"
+        out: "."
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_empty_slices: true
+        overrides:
+          - column: users.password
+            go_struct_tag: json:"-"
+
+          - column: products.pricing
+            go_type: billing3/database/types.ProductPrices
+
+          - column: product_options.values
+            go_type: billing3/database/types.ProductOptionValues
+
+          - column: gateways.settings
+            go_type: billing3/database/types.GatewaySettings
+
+          - column: servers.settings
+            go_type: billing3/database/types.ServerSettings
+
+          - column: products.settings
+            go_type: billing3/database/types.ProductSettings
+
+          - db_type: pg_catalog.numeric
+            go_type: github.com/shopspring/decimal.Decimal
+
+          - db_type: pg_catalog.timestamp
+            go_type: billing3/database/types.Timestamp
+            nullable: true
+
+          - db_type: pg_catalog.timestamp
+            go_type: billing3/database/types.Timestamp
+            nullable: false
+
+          - column: services.settings
+            go_type: billing3/database/types.ServiceSettings

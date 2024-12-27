@@ -1,0 +1,76 @@
+package service
+
+import (
+	"billing3/database"
+	"billing3/service/extension"
+	"context"
+	"errors"
+	"github.com/jackc/pgx/v5"
+	"log/slog"
+)
+
+const (
+	ServicePending   = "PENDING"
+	ServiceActive    = "ACTIVE"
+	ServiceCancelled = "CANCELLED"
+	ServiceSuspended = "SUSPENDED"
+	ServiceUnpaid    = "UNPAID"
+)
+
+func ServiceAdminActions(ctx context.Context, serviceId int32) (*database.Service, []string, error) {
+	s, err := database.Q.FindServiceById(ctx, serviceId)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil, ErrNotFound
+		}
+		slog.Error("service actions", "err", err)
+		return nil, nil, ErrInternalError
+	}
+
+	if s.Status == ServiceCancelled {
+		return nil, nil, ErrServiceCancelled
+	}
+
+	ext, ok := extension.Extensions[s.Extension]
+	if !ok {
+		slog.Error("extension not found", "service id", serviceId, "extension", s.Extension)
+		return nil, nil, ErrNotFound
+	}
+
+	actions, err := ext.AdminActions(s.ID)
+	if err != nil {
+		slog.Error("service actions", "err", err, "service id", serviceId)
+		return nil, nil, ErrInternalError
+	}
+
+	return &s, actions, nil
+}
+
+func ServiceClientActions(ctx context.Context, serviceId int32) ([]string, error) {
+	s, err := database.Q.FindServiceById(ctx, serviceId)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		slog.Error("service actions", "err", err)
+		return nil, ErrInternalError
+	}
+
+	if s.Status == ServiceCancelled {
+		return nil, ErrServiceCancelled
+	}
+
+	ext, ok := extension.Extensions[s.Extension]
+	if !ok {
+		slog.Error("extension not found", "service id", serviceId, "extension", s.Extension)
+		return nil, ErrNotFound
+	}
+
+	actions, err := ext.ClientActions(s.ID)
+	if err != nil {
+		slog.Error("service actions", "err", err, "service id", serviceId)
+		return nil, ErrInternalError
+	}
+
+	return actions, nil
+}

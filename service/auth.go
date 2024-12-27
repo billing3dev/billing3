@@ -1,0 +1,64 @@
+package service
+
+import (
+	"billing3/database"
+	"billing3/database/types"
+	"billing3/utils"
+	"billing3/utils/email"
+	"context"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+// SendVerificationEmail sends a verification email, which contains the link
+// to continue registration process
+func SendVerificationEmail(emailAddr string) {
+	jwtSign := JWTSign(jwt.MapClaims{
+		"aud": "register",
+		"sub": emailAddr,
+	}, time.Minute*30)
+
+	link := "http://localhost:5173/auth/register2?token=" + jwtSign
+	subject := "Verify email"
+	body := fmt.Sprintf("To continue creating your account, please confirm your email address <a href=\"%s\">%s</a>", link, link)
+
+	email.SendMailAsync(emailAddr, subject, body)
+}
+
+// DecodeEmailVerificationToken decodes the token for email verification and return the email.
+// return empty string if token in invalid
+func DecodeEmailVerificationToken(token string) string {
+	claims, err := JWTVerify(token)
+	if err != nil {
+		slog.Debug("jwt verify error", "err", err)
+		return ""
+	}
+
+	if claims["aud"].(string) != "register" {
+		slog.Debug("jwt wrong aud", "aud", claims["aud"])
+		return ""
+	}
+
+	return claims["sub"].(string)
+}
+
+// NewSessionToken returns a new session token for user
+func NewSessionToken(ctx context.Context, user int32) (string, error) {
+	token := utils.RandomToken(32)
+	err := database.Q.CreateSession(ctx, database.CreateSessionParams{
+		Token:  token,
+		UserID: user,
+		ExpiresAt: types.Timestamp{Timestamp: pgtype.Timestamp{
+			Valid: true,
+			Time:  time.Now().Add(time.Hour * 24 * 30),
+		}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("new auth token: %w", err)
+	}
+	return token, nil
+}
