@@ -144,19 +144,21 @@ func (p *PVE) Action(serviceId int32, action string) error {
 		username := server.Settings["username"]
 		password := server.Settings["password"]
 		node := server.Settings["node"]
-		//ips := server.Settings["ips"]
+		_ = server.Settings["ips"]
 		baseUrl := fmt.Sprintf("https://%s:%s/api2/json", address, port)
 
 		slog.Info("pve create", "server id", serverId, "servers", servers, "cpu", cpu, "disk", disk, "memory", memory, "pve base", baseUrl, "node", node, "vm type", vmType, "kvm template vmid", kvmTemplateVmid)
 
 		// pve auth
-		csrf, ticket, err := p.pveAuth(baseUrl, username, password)
+		_, _, err = p.pveAuth(baseUrl, username, password)
 		if err != nil {
 			return fmt.Errorf("pve: %w", err)
 		}
 
 		// calculate new vmid
-		newVmid := 200000 + serviceId
+		_ = 200000 + serviceId
+
+		// TODO:
 
 		// save server id
 		s.Settings["server"] = strconv.Itoa(serverId)
