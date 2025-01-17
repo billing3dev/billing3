@@ -104,14 +104,28 @@ func CalculatePricing(ctx context.Context, req OrderRequest) (*database.Product,
 		}
 
 		if option.Type == "select" {
-
 			// user input must be a valid selection
+
 			found := false
+			for _, optionValue := range option.Values {
+				for _, price := range optionValue.Prices {
+					if price.Duration == int32(req.Duration) {
+						found = true
+						break
+					}
+				}
+			}
+			if !found {
+				// this option is unavailable because none of its values has the same duration as req.Duration
+				// so we ignore this option
+				break
+			}
+
+			found = false
 			for _, optionValue := range option.Values {
 				if optionValue.Value != userInput {
 					continue
 				}
-
 				found = true
 
 				// find pricing for selected billing cycle

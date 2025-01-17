@@ -54,8 +54,8 @@ func Route(r *chi.Mux) {
 		r.Post("/admin/invoice/{id}/item", adminInvoiceAddItem)
 		r.Delete("/admin/invoice/{id}/item/{item_id}", adminInvoiceRemoveItem)
 		r.Put("/admin/invoice/{id}/item/{item_id}", adminInvoiceUpdateItem)
-		r.Get("/admin/invoice/{id}/payments", adminListInvoicePayment)
-		r.Post("/admin/invoice/{id}/payments", adminAddInvoicePayment)
+		r.Get("/admin/invoice/{id}/payment", adminListInvoicePayment)
+		r.Post("/admin/invoice/{id}/payment", adminAddInvoicePayment)
 
 		r.Get("/admin/gateway", adminListGateways)
 		r.Get("/admin/gateway/{id}", adminGatewayGet)
