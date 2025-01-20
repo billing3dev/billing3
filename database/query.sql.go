@@ -1553,17 +1553,23 @@ func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) er
 }
 
 const updateServer = `-- name: UpdateServer :exec
-UPDATE servers SET label = $1, settings = $2 WHERE id = $3
+UPDATE servers SET label = $1, settings = $2, extension = $3 WHERE id = $4
 `
 
 type UpdateServerParams struct {
-	Label    string               `json:"label"`
-	Settings types.ServerSettings `json:"settings"`
-	ID       int32                `json:"id"`
+	Label     string               `json:"label"`
+	Settings  types.ServerSettings `json:"settings"`
+	Extension string               `json:"extension"`
+	ID        int32                `json:"id"`
 }
 
 func (q *Queries) UpdateServer(ctx context.Context, arg UpdateServerParams) error {
-	_, err := q.db.Exec(ctx, updateServer, arg.Label, arg.Settings, arg.ID)
+	_, err := q.db.Exec(ctx, updateServer,
+		arg.Label,
+		arg.Settings,
+		arg.Extension,
+		arg.ID,
+	)
 	return err
 }
 

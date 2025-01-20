@@ -139,9 +139,10 @@ func adminServerEdit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = database.Q.UpdateServer(r.Context(), database.UpdateServerParams{
-		Label:    req.Label,
-		Settings: cleanedSettings,
-		ID:       int32(id),
+		Label:     req.Label,
+		Settings:  cleanedSettings,
+		ID:        int32(id),
+		Extension: req.Extension,
 	})
 	if err != nil {
 		slog.Error("admin server edit", "err", err)

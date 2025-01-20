@@ -236,7 +236,7 @@ SELECT * FROM servers ORDER BY id ASC;
 INSERT INTO servers (label, extension, settings) VALUES ($1, $2, $3) RETURNING id;
 
 -- name: UpdateServer :exec
-UPDATE servers SET label = $1, settings = $2 WHERE id = $3;
+UPDATE servers SET label = $1, settings = $2, extension = $3 WHERE id = $4;
 
 -- name: DeleteServer :exec
 DELETE FROM servers WHERE id = $1;
