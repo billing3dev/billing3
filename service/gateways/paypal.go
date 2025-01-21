@@ -238,7 +238,14 @@ func (p *Paypal) Route(r chi.Router) error {
 		}
 
 		if httpResp.StatusCode != http.StatusCreated {
-			slog.Error("paypal capture", "order_id", orderId, "status_code", httpResp.Status)
+			body, err := io.ReadAll(httpResp.Body)
+			if err != nil {
+				slog.Error("paypal capture", "err", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			slog.Error("paypal capture", "order_id", orderId, "status_code", httpResp.Status, "body", string(body))
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -282,7 +289,7 @@ func (p *Paypal) Route(r chi.Router) error {
 		}
 
 		// redirect
-		http.Redirect(w, r, fmt.Sprintf("/invoice/%d", invoiceId), http.StatusFound)
+		http.Redirect(w, r, fmt.Sprintf("/dashboard/invoice/%d", invoiceId), http.StatusFound)
 	})
 	return nil
 }
