@@ -139,6 +139,32 @@ func adminServiceUpdate(w http.ResponseWriter, r *http.Request) {
 	writeResp(w, http.StatusOK, D{})
 }
 
+func adminServiceUpdateSettings(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	req, err := decode[types.ServiceSettings](r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	err = database.Q.UpdateServiceSettings(r.Context(), database.UpdateServiceSettingsParams{
+		ID:       int32(id),
+		Settings: *req,
+	})
+	if err != nil {
+		slog.Error("update service settings", "err", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	writeResp(w, http.StatusOK, D{})
+}
+
 func adminServiceGenerateInvoice(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
@@ -356,7 +382,7 @@ func adminServiceUpdateStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func adminServiceAction(w http.ResponseWriter, r *http.Request) {
+func adminServiceActionStatus(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)

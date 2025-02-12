@@ -72,7 +72,8 @@ func Route(r *chi.Mux) {
 		r.Post("/admin/service/{id}/action", adminServicePerformAction)
 		r.Get("/admin/service/{id}/info", adminServiceInfoPage)
 		r.Put("/admin/service/{id}/status", adminServiceUpdateStatus)
-		r.Get("/admin/service/{id}/action", adminServiceAction)
+		r.Get("/admin/service/{id}/action-status", adminServiceActionStatus)
+		r.Put("/admin/service/{id}/settings", adminServiceUpdateSettings)
 
 		r.Get("/admin/server", adminServerList)
 		r.Get("/admin/server/{id}", adminServerGet)

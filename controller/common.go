@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
@@ -37,6 +38,8 @@ func writeResp(w http.ResponseWriter, code int, msg D) {
 	json.NewEncoder(w).Encode(msg)
 }
 
+// decode decodes and validates request body to type T. Request body must be in JSON.
+// Validation is skipped if T is a map.
 func decode[T any](r *http.Request) (*T, error) {
 	var t T
 
@@ -50,9 +53,21 @@ func decode[T any](r *http.Request) (*T, error) {
 		return nil, fmt.Errorf("invalid json: %w", err)
 	}
 
+	// skip validation if t is a map
+	// because validate.Struct does not accept map
+	if reflect.ValueOf(t).Kind() == reflect.Map {
+		return &t, nil
+	}
+
 	validate := validator.New(validator.WithRequiredStructEnabled())
 	err = validate.Struct(&t)
 	if err != nil {
+		var invalidValidationErr *validator.InvalidValidationError
+		if errors.As(err, &invalidValidationErr) {
+			slog.Error("invalid validation", "err", invalidValidationErr)
+			return nil, fmt.Errorf("invalid validation rrror")
+		}
+
 		sb := strings.Builder{}
 		sb.WriteString("Invalid input: ")
 		for _, err := range err.(validator.ValidationErrors) {
