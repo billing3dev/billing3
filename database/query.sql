@@ -258,3 +258,6 @@ DELETE FROM servers WHERE id = $1;
 
 -- name: FindServerById :one
 SELECT * FROM servers WHERE id = $1;
+
+-- name: UpdateServerSettings :exec
+UPDATE servers SET settings = $1 WHERE id = $2;

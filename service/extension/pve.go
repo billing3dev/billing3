@@ -4,6 +4,7 @@ import (
 	"billing3/database"
 	"billing3/utils"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -62,6 +63,10 @@ func (p *PVE) apiGet(api string, resp any, ticket string) error {
 	}
 	defer httpResp.Body.Close()
 
+	if httpResp.StatusCode/100 != 2 {
+		return fmt.Errorf("api post: status code: %s", httpResp.Status)
+	}
+
 	err = json.NewDecoder(httpResp.Body).Decode(resp)
 	if err != nil {
 		return fmt.Errorf("api get: %w", err)
@@ -69,8 +74,8 @@ func (p *PVE) apiGet(api string, resp any, ticket string) error {
 	return nil
 }
 
-func (p *PVE) apiPost(api string, body url.Values, resp any, csrf, ticket string) error {
-	req, err := http.NewRequest("POST", api, strings.NewReader(body.Encode()))
+func (p *PVE) apiAction(method string, api string, body url.Values, resp any, csrf string, ticket string) error {
+	req, err := http.NewRequest(method, api, strings.NewReader(body.Encode()))
 	if err != nil {
 		return fmt.Errorf("api post: %w", err)
 	}
@@ -84,7 +89,18 @@ func (p *PVE) apiPost(api string, body url.Values, resp any, csrf, ticket string
 	}
 	defer httpResp.Body.Close()
 
-	err = json.NewDecoder(httpResp.Body).Decode(resp)
+	all, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return fmt.Errorf("api post: %w", err)
+	}
+
+	slog.Debug("pve post", "url", api, "body", all, "resp", resp, "status", httpResp.Status)
+
+	if httpResp.StatusCode/100 != 2 {
+		return fmt.Errorf("api post: status code: %s", httpResp.Status)
+	}
+
+	err = json.Unmarshal(all, resp)
 	if err != nil {
 		return fmt.Errorf("api post: %w", err)
 	}
@@ -92,10 +108,159 @@ func (p *PVE) apiPost(api string, body url.Values, resp any, csrf, ticket string
 	return nil
 }
 
+func (p *PVE) createService(serviceId int32) error {
+	ctx := context.Background()
+
+	s, err := database.Q.FindServiceById(ctx, serviceId)
+	if err != nil {
+		return fmt.Errorf("pve: %w", err)
+	}
+
+	cpu := s.Settings["cpu"]
+	disk := s.Settings["disk"]
+	memory := s.Settings["memory"]
+	servers := s.Settings["servers"]
+	vmType := s.Settings["vm_type"]
+	vmPassword := s.Settings["vm_password"]
+	kvmTemplateVmid := s.Settings["kvm_template_vmid"]
+
+	serverIds := make([]int, 0)
+	for _, s := range strings.Split(servers, ",") {
+		i, err := strconv.Atoi(s)
+		if err != nil {
+			return fmt.Errorf("pve: invalid servers: %s", servers)
+		}
+		serverIds = append(serverIds, i)
+	}
+
+	if len(serverIds) == 0 {
+		return fmt.Errorf("pve: no servers available")
+	}
+
+	// choose a random pve server
+	serverId, _ := utils.RandomChoose(serverIds)
+
+	// lock the server
+	err = utils.Lock(fmt.Sprintf("server_%d", serviceId))
+	if err != nil {
+		return fmt.Errorf("pve: server lock: %w", err)
+	}
+	defer func() {
+		// unlock
+		err := utils.Unlock(fmt.Sprintf("server_%d", serviceId))
+		if err != nil {
+			slog.Error("pve: server unlock", "err", err)
+		}
+	}()
+
+	// pve server settings
+	server, err := database.Q.FindServerById(ctx, int32(serverId))
+	if err != nil {
+		return fmt.Errorf("pve: invalid servers: %d %w", serverId, err)
+	}
+
+	address := server.Settings["address"]
+	port := server.Settings["port"]
+	username := server.Settings["username"]
+	password := server.Settings["password"]
+	node := server.Settings["node"]
+	ips := server.Settings["ips"]
+	gateway := server.Settings["gateway"]
+	baseUrl := fmt.Sprintf("https://%s:%s/api2/json", address, port)
+
+	// choose an IP address
+	unusedIps := utils.Filter(strings.Split(ips, "\n"), func(ip string) bool {
+		// ip with # prefix are currently in use
+		return len(ip) != 0 && ip[0] != '#'
+	})
+	if len(unusedIps) == 0 {
+		return fmt.Errorf("pve: server %d: no unused ips available", serverId)
+	}
+	ip, _ := utils.RandomChoose(unusedIps)
+
+	slog.Info("pve create", "server id", serverId, "servers", servers, "cpu", cpu, "disk", disk, "memory", memory, "pve base", baseUrl, "node", node, "vm type", vmType, "kvm template vmid", kvmTemplateVmid, "ip", ip)
+
+	// pve auth
+	csrf, ticket, err := p.pveAuth(baseUrl, username, password)
+	if err != nil {
+		return fmt.Errorf("pve: %w", err)
+	}
+
+	// vmid
+	vmid := int(10000 + serviceId)
+
+	// clone vm
+	resp := pveResp[string]{}
+	form := url.Values{}
+	form.Set("newid", strconv.Itoa(vmid))
+	form.Set("full", "1")
+	form.Set("name", fmt.Sprintf("service%d", serviceId))
+	err = p.apiAction("POST", fmt.Sprintf("%s/nodes/%s/qemu/%s/clone", baseUrl, node, kvmTemplateVmid), form, &resp, csrf, ticket)
+	if err != nil {
+		return fmt.Errorf("pve: %w", err)
+	}
+
+	// vm config
+	resp = pveResp[string]{}
+	form = url.Values{}
+	form.Set("cipassword", vmPassword)
+	form.Set("ciuser", "vmuser")
+	form.Set("cores", cpu)
+	form.Set("memory", memory)
+	form.Set("ipconfig0", fmt.Sprintf("gw=%s,ip=%s", gateway, ip))
+	form.Set("nameserver", "8.8.8.8")
+	form.Set("searchdomain", ".")
+	err = p.apiAction("POST", fmt.Sprintf("%s/nodes/%s/qemu/%d/config", baseUrl, node, vmid), form, &resp, csrf, ticket)
+	if err != nil {
+		return fmt.Errorf("pve: %w", err)
+	}
+
+	// resize disk
+	resp = pveResp[string]{}
+	form = url.Values{}
+	form.Set("disk", "scsi0")
+	form.Set("size", disk+"G")
+	err = p.apiAction("PUT", fmt.Sprintf("%s/nodes/%s/qemu/%d/resize", baseUrl, node, vmid), form, &resp, csrf, ticket)
+	if err != nil {
+		return fmt.Errorf("pve: %w", err)
+	}
+
+	// save server id
+	s.Settings["server"] = strconv.Itoa(serverId)
+	err = database.Q.UpdateServiceSettings(ctx, database.UpdateServiceSettingsParams{
+		ID:       int32(serviceId),
+		Settings: s.Settings,
+	})
+	if err != nil {
+		return fmt.Errorf("pve: db: %w", err)
+	}
+
+	// mark the ip ad used
+	newIps := ""
+	for _, p := range strings.Split(ips, "\n") {
+		if len(p) == 0 {
+			continue
+		}
+		if p == ip {
+			newIps += "#" + ip + "\n"
+		} else {
+			newIps += ip + "\n"
+		}
+	}
+	server.Settings["ips"] = newIps
+	err = database.Q.UpdateServerSettings(ctx, database.UpdateServerSettingsParams{
+		ID:       int32(vmid),
+		Settings: server.Settings,
+	})
+	if err != nil {
+		return fmt.Errorf("pve: db: %w", err)
+	}
+
+	return nil
+}
+
 func (p *PVE) Action(serviceId int32, action string) error {
 	slog.Info("pve action", "service id", serviceId, "action", action)
-
-	time.Sleep(10 * time.Second)
 
 	switch action {
 	case "poweroff":
@@ -109,73 +274,7 @@ func (p *PVE) Action(serviceId int32, action string) error {
 	case "terminate":
 		return nil
 	case "create":
-		s, err := database.Q.FindServiceById(context.Background(), serviceId)
-		if err != nil {
-			return fmt.Errorf("pve: %w", err)
-		}
-
-		cpu := s.Settings["cpu"]
-		disk := s.Settings["disk"]
-		memory := s.Settings["memory"]
-		servers := s.Settings["servers"]
-		vmType := s.Settings["vm_type"]
-		kvmTemplateVmid := s.Settings["kvm_template_vmid"]
-
-		serverIds := make([]int, 0)
-		for _, s := range strings.Split(servers, ",") {
-			i, err := strconv.Atoi(s)
-			if err != nil {
-				return fmt.Errorf("pve: invalid servers: %s", servers)
-			}
-			serverIds = append(serverIds, i)
-		}
-
-		if len(serverIds) == 0 {
-			return fmt.Errorf("pve: no servers available")
-		}
-
-		// choose a random pve server
-		serverId := serverIds[utils.Randint(0, len(serverIds)-1)]
-
-		// pve server settings
-		server, err := database.Q.FindServerById(context.Background(), int32(serverId))
-		if err != nil {
-			return fmt.Errorf("pve: invalid servers: %d %w", serverId, err)
-		}
-
-		address := server.Settings["address"]
-		port := server.Settings["port"]
-		username := server.Settings["username"]
-		password := server.Settings["password"]
-		node := server.Settings["node"]
-		_ = server.Settings["ips"]
-		baseUrl := fmt.Sprintf("https://%s:%s/api2/json", address, port)
-
-		slog.Info("pve create", "server id", serverId, "servers", servers, "cpu", cpu, "disk", disk, "memory", memory, "pve base", baseUrl, "node", node, "vm type", vmType, "kvm template vmid", kvmTemplateVmid)
-
-		// pve auth
-		_, _, err = p.pveAuth(baseUrl, username, password)
-		if err != nil {
-			return fmt.Errorf("pve: %w", err)
-		}
-
-		// calculate new vmid
-		_ = 200000 + serviceId
-
-		// TODO:
-
-		// save server id
-		s.Settings["server"] = strconv.Itoa(serverId)
-
-		err = database.Q.UpdateServiceSettings(context.Background(), database.UpdateServiceSettingsParams{
-			ID:       int32(serviceId),
-			Settings: s.Settings,
-		})
-		if err != nil {
-			return fmt.Errorf("pve: %w", err)
-		}
-
-		return nil
+		return p.createService(serviceId)
 	}
 
 	return fmt.Errorf("invalid action \"%s\"", action)
@@ -189,7 +288,7 @@ func (p *PVE) ClientActions(serviceId int32) ([]string, error) {
 	if _, ok := s.Settings["server"]; ok {
 		return []string{"poweroff", "reboot"}, nil
 	}
-	return []string{"poweroff", "reboot"}, nil
+	return []string{}, nil
 
 }
 
@@ -224,6 +323,12 @@ func (p *PVE) AdminPage(w http.ResponseWriter, serviceId int32) error {
 func (p *PVE) Init() error {
 	p.httpClient = http.Client{
 		Timeout: time.Second * 10,
+		Transport: &http.Transport{
+			TLSHandshakeTimeout: time.Second * 5,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
 	}
 	return nil
 }
@@ -231,17 +336,18 @@ func (p *PVE) Init() error {
 func (p *PVE) ProductSettings(inputs map[string]string) ([]ProductSetting, error) {
 	s := []ProductSetting{
 		{Name: "servers", DisplayName: "Servers", Type: "servers"},
-		{Name: "disk", DisplayName: "Disk (GB)", Type: "string", Regex: "^\\d+"},
-		{Name: "memory", DisplayName: "Memory (MB)", Type: "string", Regex: "^\\d+"},
-		{Name: "cpu", DisplayName: "CPU Cores", Type: "string", Regex: "^\\d+"},
+		{Name: "disk", DisplayName: "Disk (GB)", Type: "string", Regex: "^\\d+$"},
+		{Name: "memory", DisplayName: "Memory (MB)", Type: "string", Regex: "^\\d+$"},
+		{Name: "cpu", DisplayName: "CPU Cores", Type: "string", Regex: "^\\d+$"},
+		{Name: "vm_password", DisplayName: "VM Password (Can be overwritten by options)", Type: "string", Regex: "^.+$"},
 		{Name: "vm_type", DisplayName: "VM Type", Type: "select", Values: []string{"kvm", "lxc"}},
 	}
 
 	vmType, _ := inputs["vm_type"]
 	if vmType == "kvm" {
-		s = append(s, ProductSetting{Name: "kvm_template_vmid", DisplayName: "KVM Template VMID", Type: "string", Regex: "^\\d+"})
+		s = append(s, ProductSetting{Name: "kvm_template_vmid", DisplayName: "KVM Template VMID", Type: "string", Regex: "^\\d+$"})
 	} else if vmType == "lxc" {
-		s = append(s, ProductSetting{Name: "lxc_template", DisplayName: "LXC Template", Type: "string", Regex: "^.+"})
+		s = append(s, ProductSetting{Name: "lxc_template", DisplayName: "LXC Template", Type: "string", Regex: "^.+$"})
 	}
 
 	return s, nil
@@ -254,7 +360,9 @@ func (p *PVE) ServerSettings() []ServerSettings {
 		{Name: "username", DisplayName: "Username", Type: "string", Placeholder: "root@pam", Regex: "^.+$"},
 		{Name: "password", DisplayName: "Password", Type: "string", Regex: "^.+$"},
 		{Name: "node", DisplayName: "Node", Type: "string", Regex: "^.+$"},
-		{Name: "ips", DisplayName: "IP Addresses (one per line)", Type: "text", Placeholder: "10.2.3.100/24\n10.2.3.101/24\n10.2.3.102/24\n10.2.3.103/24"},
+		{Name: "bridge", DisplayName: "Network device bridge", Type: "string", Regex: "^.+$", Placeholder: "vmbr0"},
+		{Name: "gateway", DisplayName: "IPv4 Gateway", Type: "string", Regex: "^.+$"},
+		{Name: "ips", DisplayName: "IPv4 Addresses (one per line)", Type: "text", Regex: "^(.|\\n)+$", Placeholder: "10.2.3.100/24\n10.2.3.101/24\n10.2.3.102/24\n10.2.3.103/24"},
 	}
 }
 

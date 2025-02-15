@@ -26,3 +26,11 @@ func Randint(a, b int) int {
 	}
 	return a + int(n.Int64())
 }
+
+func RandomChoose[S ~[]E, E any](l S) (E, int) {
+	if len(l) == 0 {
+		panic("empty slice")
+	}
+	n := Randint(0, len(l)-1)
+	return l[n], n
+}

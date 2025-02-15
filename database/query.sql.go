@@ -1694,6 +1694,20 @@ func (q *Queries) UpdateServer(ctx context.Context, arg UpdateServerParams) erro
 	return err
 }
 
+const updateServerSettings = `-- name: UpdateServerSettings :exec
+UPDATE servers SET settings = $1 WHERE id = $2
+`
+
+type UpdateServerSettingsParams struct {
+	Settings types.ServerSettings `json:"settings"`
+	ID       int32                `json:"id"`
+}
+
+func (q *Queries) UpdateServerSettings(ctx context.Context, arg UpdateServerSettingsParams) error {
+	_, err := q.db.Exec(ctx, updateServerSettings, arg.Settings, arg.ID)
+	return err
+}
+
 const updateService = `-- name: UpdateService :exec
 UPDATE services SET label = $1, billing_cycle = $2, price = $3, expires_at = $4 WHERE id = $5
 `

@@ -24,7 +24,7 @@ type ServerSettings struct {
 	DisplayName string   `json:"display_name"` // the name that will be displayed on frontend
 	Name        string   `json:"name"`         // the name that will be used in database
 	Placeholder string   `json:"placeholder"`  // placeholder text
-	Type        string   `json:"type"`         // string (single line) / text (multiple lines) / select
+	Type        string   `json:"type"`         // string (single line) / text (multiple lines)
 	Values      []string `json:"values"`       // values for select (ignored if Type is not select)
 	Description string   `json:"description"`  // helper text
 	Regex       string   `json:"regex"`        // regex for validating input
