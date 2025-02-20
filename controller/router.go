@@ -23,6 +23,7 @@ func Route(r *chi.Mux) {
 		r.Post("/auth/register", register)
 		r.Post("/auth/register2", registerStep2)
 		r.With(middlewares.MustAuth).Get("/auth/me", me)
+		r.With(middlewares.MustAuth).Post("/auth/logout", logout)
 	})
 
 	// admin

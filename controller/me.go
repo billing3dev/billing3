@@ -2,7 +2,9 @@ package controller
 
 import (
 	"billing3/controller/middlewares"
+	"billing3/database"
 	"fmt"
+	"log/slog"
 	"net/http"
 )
 
@@ -21,4 +23,17 @@ func me(w http.ResponseWriter, r *http.Request) {
 		"role":    user.Role,
 		"address": address,
 	})
+}
+
+func logout(w http.ResponseWriter, r *http.Request) {
+	token := middlewares.MustGetToken(r)
+
+	err := database.Q.DeleteSession(r.Context(), token)
+	if err != nil {
+		slog.Error("delete session", "err", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	writeResp(w, http.StatusOK, D{})
 }

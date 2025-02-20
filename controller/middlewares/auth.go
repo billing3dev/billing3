@@ -13,7 +13,7 @@ import (
 
 type authCtx string
 
-// add user to context if session token is valid
+// Auth adds user to context if session token is valid
 func Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get("Authorization")
@@ -40,11 +40,12 @@ func Auth(next http.Handler) http.Handler {
 		}
 
 		ctx = context.WithValue(ctx, authCtx("USER"), &user)
+		ctx = context.WithValue(ctx, authCtx("TOKEN"), token)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-// block any request that does not have a user
+// MustAuth blocks any request that does not have a user
 func MustAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if GetUser(r) == nil {
@@ -74,7 +75,7 @@ func RequireRole(role string) func(next http.Handler) http.Handler {
 
 }
 
-// panic if user does not exist
+// MustGetUser panics if user does not exist
 func MustGetUser(r *http.Request) *database.User {
 	user, ok := r.Context().Value(authCtx("USER")).(*database.User)
 	if !ok || user == nil {
@@ -83,7 +84,15 @@ func MustGetUser(r *http.Request) *database.User {
 	return user
 }
 
-// return nil if user does not exist
+func MustGetToken(r *http.Request) string {
+	token, ok := r.Context().Value(authCtx("TOKEN")).(string)
+	if !ok {
+		panic("token not in context")
+	}
+	return token
+}
+
+// GetUser returns nil if user does not exist
 func GetUser(r *http.Request) *database.User {
 	user, ok := r.Context().Value(authCtx("USER")).(*database.User)
 	if !ok || user == nil {
