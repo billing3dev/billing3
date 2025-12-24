@@ -17,6 +17,12 @@ type authCtx string
 func Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get("Authorization")
+		if token == "" {
+			cookie, err := r.Cookie("token")
+			if err == nil {
+				token = cookie.Value
+			}
+		}
 
 		ctx := r.Context()
 
