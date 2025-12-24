@@ -57,7 +57,7 @@ func MustAuth(next http.Handler) http.Handler {
 		if GetUser(r) == nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
-			io.WriteString(w, "{\"error\": \"Unauthorized\"}")
+			io.WriteString(w, "{\"error\": \"Login required\"}")
 			return
 		}
 		next.ServeHTTP(w, r)

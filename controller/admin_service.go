@@ -289,7 +289,7 @@ func adminServiceInfoPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	err = ext.AdminPage(w, s.ID)
+	err = ext.AdminPage(w, r, s.ID)
 	if err != nil {
 		slog.Error("service admin page", "err", err, "service id", s.ID, "extension", s.Extension)
 	}

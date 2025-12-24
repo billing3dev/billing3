@@ -1,9 +1,10 @@
 package extension
 
 import (
-	"github.com/go-chi/chi/v5"
 	"log/slog"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type None struct{}
@@ -25,12 +26,12 @@ func (p *None) Route(r chi.Router) error {
 	return nil
 }
 
-func (p *None) ClientPage(w http.ResponseWriter, serviceId int32) error {
+func (p *None) ClientPage(w http.ResponseWriter, r *http.Request, serviceId int32) error {
 	w.WriteHeader(http.StatusOK)
 	return nil
 }
 
-func (p *None) AdminPage(w http.ResponseWriter, serviceId int32) error {
+func (p *None) AdminPage(w http.ResponseWriter, r *http.Request, serviceId int32) error {
 	w.WriteHeader(http.StatusOK)
 	return nil
 }

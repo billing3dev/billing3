@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PVE Info</title>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.8/css/bootstrap.min.css" integrity="sha512-2bBQCjcnw658Lho4nlXJcc6WkV/UxpE/sAokbXPxQNGqmNdQrWqtw26Ns9kFF/yG792pKR1Sx8/Y1Lf1XN4GKA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.13.1/font/bootstrap-icons.min.css" integrity="sha512-t7Few9xlddEmgd3oKZQahkNI4dS6l80+eGEzFQiqtyVYdvcSG2D3Iub77R20BdotfRPA9caaRkg1tyaJiPmO0g==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 </head>
@@ -60,20 +61,54 @@
 
     
     <div class="mb-3">
-        <form method="post">
-            <span class="text-muted">Reinstall OS</span>
-            <div class="input-group mb-3">
-                <select class="form-select">
-                    <option selected></option>
-                    <option value="1">One</option>
-                    <option value="2">Two</option>
-                    <option value="3">Three</option>
-                </select>
-                <button class="btn btn-outline-primary" type="button" onclick="confirm('confirm')">Button</button>
-            </div>
-        </form>
+        <span class="text-muted">Reinstall OS</span>
+        <div class="input-group mb-3">
+            <select class="form-select" id="os-select">
+                <option selected></option>
+                <option value="local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst">Debian 13</option>
+                <option value="local:vztmpl/debian-12-standard_12.12-1_amd64.tar.zst">Debian 12</option>
+                <option value="local:vztmpl/almalinux-10-default_20250930_amd64.tar.xz">AlmaLinux 10</option>
+                <option value="local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst">Ubuntu 24.04</option>
+            </select>
+            <button class="btn btn-primary" id="os-btn" type="button">Reinstall</button>
+        </div>
     </div>
 </div>
+
+<script>
+    $(function() {
+        $("#os-btn").click(function() {
+            var selectedOs = $("#os-select").val();
+            if (!confirm("Are you sure you want to reinstall " + $("#os-select option:selected").text() + "? This will erase all data on the server.")) {
+                return;
+            }
+            fetch(location.href, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ action: "reinstall", os: selectedOs })
+            }).then(response => {
+                return response.json();
+            }).then(data => {
+                if (data.ok) {
+                    alert("Reinstallation started successfully.");
+                    window.parent.location.reload();
+                } else {
+                    console.error(data);
+                    if (data.error) {
+                        alert("Error: " + data.error);
+                    } else {
+                        alert("Something went wrong. Please check server log.");
+                    }
+                }
+            }).catch(error => {
+                console.error(error);
+                alert("Something went wrong. Please check server log.");
+            });
+        });
+    });
+</script>
 
 </body>
 

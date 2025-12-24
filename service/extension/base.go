@@ -67,11 +67,11 @@ type Extension interface {
 
 	// ClientPage renders a complete html page that contains information
 	// about the service, shown to the client.
-	ClientPage(w http.ResponseWriter, serviceId int32) error
+	ClientPage(w http.ResponseWriter, r *http.Request, serviceId int32) error
 
 	// AdminPage renders a complete html page that contains information
 	// about the service, shown to admins.
-	AdminPage(w http.ResponseWriter, serviceId int32) error
+	AdminPage(w http.ResponseWriter, r *http.Request, serviceId int32) error
 }
 
 func registerExtension(name string, extension Extension) {

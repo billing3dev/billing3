@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -309,7 +310,7 @@ func (p *PVE) createService(serviceId int32) error {
 		form.Set("cores", cpu)
 		form.Set("memory", memory)
 		form.Set("swap", "0")
-		form.Set("net0", fmt.Sprintf("name=eth0,bridge=%s,firewall=1,ip=%s", bridge, ip))
+		form.Set("net0", fmt.Sprintf("name=eth0,bridge=%s,firewall=1,ip=%s,gw=%s", bridge, ip, gateway))
 		form.Set("nameserver", "8.8.8.8")
 
 		lxcResp := pveResp[string]{}
@@ -658,6 +659,17 @@ func (p *PVE) Action(serviceId int32, action string) error {
 	}
 
 	switch action {
+	case "reinstall":
+		err = p.qemuPoweroff(serviceId, true, vmType == "lxc")
+		if err != nil && !strings.Contains(err.Error(), "not running") {
+			// ignore error caused by VM not running
+			return fmt.Errorf("reinstall: force poweroff: %w", err)
+		}
+		err = p.qemuDelete(serviceId, vmType == "lxc")
+		if err != nil {
+			return fmt.Errorf("reinstall: delete: %w", err)
+		}
+		return p.createService(serviceId)
 	case "poweroff":
 		return p.qemuPoweroff(serviceId, false, vmType == "lxc")
 	case "force_poweroff":
@@ -802,7 +814,73 @@ func (p *PVE) getQemuVmInfo(serviceId int32) (*pveVmInfo, error) {
 	return &vmInfo, nil
 }
 
-func (p *PVE) ClientPage(w http.ResponseWriter, serviceId int32) error {
+func (p *PVE) ClientPage(w http.ResponseWriter, r *http.Request, serviceId int32) error {
+	return p.AdminPage(w, r, serviceId)
+}
+
+func (p *PVE) AdminPage(w http.ResponseWriter, r *http.Request, serviceId int32) error {
+
+	serviceSettings, _, err := p.getServiceSettings(serviceId)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return err
+	}
+
+	if r.Method == "POST" {
+		type actionForm struct {
+			Action string `json:"action"`
+			OS     string `json:"os"`
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
+			w.WriteHeader(http.StatusBadRequest)
+			return nil
+		}
+
+		var form actionForm
+		err := json.NewDecoder(r.Body).Decode(&form)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return nil
+		}
+
+		lxcTempalteList, ok := serviceSettings["lxc_template_list"]
+		if !ok {
+			w.WriteHeader(http.StatusInternalServerError)
+			return fmt.Errorf("lxc_template_list is not set in service settings")
+		}
+		validTemplates := strings.Split(lxcTempalteList, "\n")
+
+		if !slices.Contains(validTemplates, form.OS) {
+			w.WriteHeader(http.StatusBadRequest)
+			io.WriteString(w, "{\"error\": \"The selected OS is unavailable\"}")
+			return nil
+		}
+
+		serviceSettings["lxc_template"] = form.OS
+		err = database.Q.UpdateServiceSettings(r.Context(), database.UpdateServiceSettingsParams{
+			ID:       serviceId,
+			Settings: serviceSettings,
+		})
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return err
+		}
+
+		if form.Action == "reinstall" {
+			err := DoActionAsync(r.Context(), "PVE", serviceId, "reinstall", "")
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return err
+			}
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, "{\"ok\": true}")
+			return nil
+		}
+
+		w.WriteHeader(http.StatusBadRequest)
+		return nil
+	}
+
 	info, err := p.getQemuVmInfo(serviceId)
 	if err != nil {
 		if errors.Is(err, errNoServerAssigned) {
@@ -810,25 +888,6 @@ func (p *PVE) ClientPage(w http.ResponseWriter, serviceId int32) error {
 			return nil
 		}
 		io.WriteString(w, "<span style=\"font-family: sans-serif\">Something went wrong. Please check server log.</span>")
-		return err
-	}
-
-	err = p.infoPage.Execute(w, info)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (p *PVE) AdminPage(w http.ResponseWriter, serviceId int32) error {
-	info, err := p.getQemuVmInfo(serviceId)
-	if err != nil {
-		if errors.Is(err, errNoServerAssigned) {
-			io.WriteString(w, "<span style=\"font-family: sans-serif\">This service is not created</span>")
-			return nil
-		}
-		io.WriteString(w, "<span style=\"font-family: sans-serif\">Error: "+template.HTMLEscapeString(err.Error())+"</span>")
 		return err
 	}
 
@@ -870,6 +929,7 @@ func (p *PVE) ProductSettings(inputs map[string]string) ([]ProductSetting, error
 		s = append(s, ProductSetting{Name: "kvm_template_vmid", DisplayName: "KVM Template VMID", Type: "string", Regex: "^\\d+$"})
 	case "lxc":
 		s = append(s, ProductSetting{Name: "lxc_template", Placeholder: "local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst", DisplayName: "LXC Template", Type: "string", Regex: "^.+$"})
+		s = append(s, ProductSetting{Name: "lxc_template_list", Description: "List of LXC templates that the user can choose to reinstlal from", Placeholder: "local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst\nlocal:vztmpl/debian-12-standard_12.12-1_amd64.tar.zst\nlocal:vztmpl/almalinux-10-default_20250930_amd64.tar.xz\n...", DisplayName: "List of LXC templates", Type: "text", Regex: "."})
 	}
 
 	return s, nil
