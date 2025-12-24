@@ -49,6 +49,8 @@ github.com/riverqueue/river v0.29.0 h1:PMO4k6n7HcIjjgrbnG2UG04Exh8aLmQksOddOoYDA
 github.com/riverqueue/river v0.29.0/go.mod h1:S8BbQbxCrJLYygmnrnraltHhWlGzZzwjqcRbY3wdq7w=
 github.com/riverqueue/river/riverdriver v0.29.0 h1:o7mV07RPXrGJdwXUKxVTOyvG1/cDmJIMI3V4Le4/LBo=
 github.com/riverqueue/river/riverdriver v0.29.0/go.mod h1:bmkdn74EG4Ogsv44JkC1CBxFZ3JHfYsN+e0K8Dq0otU=
+github.com/riverqueue/river/riverdriver/riverpgxv5 v0.29.0 h1:l3D17JWq/00QEt0bcawyDMxZYmM1YAk11Y/nRRVk5C8=
+github.com/riverqueue/river/riverdriver/riverpgxv5 v0.29.0/go.mod h1:mpncN3m7DR7VpD78LV5CczbSpwkWcLeJ5j1kkJiOt9s=
 github.com/riverqueue/river/rivershared v0.29.0 h1:Niwbmp/CQAKPZ+zT3teCgEmPhksyW0f2cx4X03FurEk=
 github.com/riverqueue/river/rivershared v0.29.0/go.mod h1:74WjXTYKV4nTfLemIPloPqiA3Tjqe5BFvnALrNbS62k=
 github.com/riverqueue/river/rivertype v0.29.0 h1:26hpzbd44piqJZ+1zO4RO6GRKpmZVX3Ncx+Ki+w2gtg=

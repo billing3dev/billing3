@@ -182,17 +182,7 @@ func (p *PVE) createService(serviceId int32) error {
 	serverId, _ := utils.RandomChoose(serverIds)
 
 	// lock the server
-	err = utils.Lock(fmt.Sprintf("server_%d", serviceId))
-	if err != nil {
-		return fmt.Errorf("pve: server lock: %w", err)
-	}
-	defer func() {
-		// unlock
-		err := utils.Unlock(fmt.Sprintf("server_%d", serviceId))
-		if err != nil {
-			slog.Error("pve: server unlock", "err", err)
-		}
-	}()
+	// TODO:
 
 	// pve server settings
 	server, err := database.Q.FindServerById(ctx, int32(serverId))

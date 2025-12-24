@@ -7,15 +7,14 @@ import (
 	"billing3/service"
 	"billing3/service/extension"
 	"errors"
-	"fmt"
-	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/redis/go-redis/v9"
-	"github.com/shopspring/decimal"
 	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/shopspring/decimal"
 )
 
 func getServices(w http.ResponseWriter, r *http.Request) {
@@ -165,63 +164,6 @@ func serviceInfoPage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error("service admin page", "err", err, "service id", s.ID, "extension", s.Extension)
 	}
-}
-
-func serviceActionStatus(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(chi.URLParam(r, "id"))
-	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
-	user := middlewares.MustGetUser(r)
-
-	isOwner, err := service.IsServiceOwner(r.Context(), user.ID, int32(id))
-	if err != nil {
-		slog.Error("service action status", "err", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	if !isOwner {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
-
-	resp := database.RedisClient.Get(r.Context(), fmt.Sprintf("service_%d_action_lock", id))
-	if resp.Err() != nil && !errors.Is(resp.Err(), redis.Nil) {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	pending := ""
-	if !errors.Is(resp.Err(), redis.Nil) {
-		pending = resp.Val()
-	}
-
-	resp = database.RedisClient.GetDel(r.Context(), fmt.Sprintf("service_%d_action_info", id))
-	if resp.Err() != nil && !errors.Is(resp.Err(), redis.Nil) {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	info := ""
-	if !errors.Is(resp.Err(), redis.Nil) {
-		info = resp.Val()
-	}
-
-	resp = database.RedisClient.GetDel(r.Context(), fmt.Sprintf("service_%d_action_error", id))
-	if resp.Err() != nil && !errors.Is(resp.Err(), redis.Nil) {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	actionError := ""
-	if !errors.Is(resp.Err(), redis.Nil) {
-		actionError = resp.Val()
-	}
-
-	writeResp(w, http.StatusOK, D{
-		"pending":      pending,
-		"info":         info,
-		"action_error": actionError,
-	})
 }
 
 func servicePerformAction(w http.ResponseWriter, r *http.Request) {

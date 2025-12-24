@@ -4,10 +4,11 @@ import (
 	"billing3/controller/middlewares"
 	"billing3/service/extension"
 	"billing3/service/gateways"
-	"github.com/go-chi/chi/v5"
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func Route(r *chi.Mux) {
@@ -75,8 +76,8 @@ func Route(r *chi.Mux) {
 		r.Post("/admin/service/{id}/action", adminServicePerformAction)
 		r.Get("/admin/service/{id}/info", adminServiceInfoPage)
 		r.Put("/admin/service/{id}/status", adminServiceUpdateStatus)
-		r.Get("/admin/service/{id}/action-status", adminServiceActionStatus)
 		r.Put("/admin/service/{id}/settings", adminServiceUpdateSettings)
+		r.Get("/admin/service/{id}/jobs", adminServiceGetJobs)
 
 		r.Get("/admin/server", adminServerList)
 		r.Get("/admin/server/{id}", adminServerGet)
@@ -111,7 +112,6 @@ func Route(r *chi.Mux) {
 		r.Get("/service/{id}", getService)
 		r.Get("/service/{id}/action", serviceClientActions)
 		r.Get("/service/{id}/info", serviceInfoPage)
-		r.Get("/service/{id}/action-status", serviceActionStatus)
 		r.Post("/service/{id}/action", servicePerformAction)
 	})
 

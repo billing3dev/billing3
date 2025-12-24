@@ -6,18 +6,18 @@ import (
 	"billing3/service"
 	"billing3/service/extension"
 	"errors"
-	"fmt"
-	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/redis/go-redis/v9"
-	"github.com/shopspring/decimal"
 	"log/slog"
 	"math"
 	"net/http"
 	"slices"
 	"strconv"
 	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/riverqueue/river"
+	"github.com/shopspring/decimal"
 )
 
 func adminServiceList(w http.ResponseWriter, r *http.Request) {
@@ -382,46 +382,53 @@ func adminServiceUpdateStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func adminServiceActionStatus(w http.ResponseWriter, r *http.Request) {
+func adminServiceGetJobs(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	resp := database.RedisClient.Get(r.Context(), fmt.Sprintf("service_%d_action_lock", id))
-	if resp.Err() != nil && !errors.Is(resp.Err(), redis.Nil) {
-		w.WriteHeader(http.StatusInternalServerError)
+	params := river.NewJobListParams()
+	params.OrderBy(river.JobListOrderByID, river.SortOrderDesc)
+	params.Kinds("extension_action")
+	params.Metadata("{\"service_id\": " + strconv.Itoa(id) + "}")
+
+	jobsListResp, err := database.River.JobList(r.Context(), params)
+	if err != nil {
+		slog.Error("admin get service jobs", "err", err)
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	pending := ""
-	if !errors.Is(resp.Err(), redis.Nil) {
-		pending = resp.Val()
+
+	type jobRespStruct struct {
+		ID          int64      `json:"id"`
+		Kind        string     `json:"kind"`
+		State       string     `json:"state"`
+		ScheduledAt time.Time  `json:"scheduled_at"`
+		AttemptedAt *time.Time `json:"attempted_at"`
+		FinalizedAt *time.Time `json:"finalized_at"`
+		Args        string     `json:"args"`
+		Error       string     `json:"error"`
 	}
 
-	resp = database.RedisClient.GetDel(r.Context(), fmt.Sprintf("service_%d_action_info", id))
-	if resp.Err() != nil && !errors.Is(resp.Err(), redis.Nil) {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	info := ""
-	if !errors.Is(resp.Err(), redis.Nil) {
-		info = resp.Val()
+	var jobsResp []jobRespStruct
+	for _, job := range jobsListResp.Jobs {
+		jobsResp = append(jobsResp, jobRespStruct{
+			ID:          job.ID,
+			Kind:        job.Kind,
+			State:       string(job.State),
+			ScheduledAt: job.ScheduledAt,
+			AttemptedAt: job.AttemptedAt,
+			FinalizedAt: job.FinalizedAt,
+			Args:        string(job.EncodedArgs),
+			Error:       "",
+		})
+
+		for _, e := range job.Errors {
+			jobsResp[len(jobsResp)-1].Error += e.Error + "; "
+		}
 	}
 
-	resp = database.RedisClient.GetDel(r.Context(), fmt.Sprintf("service_%d_action_error", id))
-	if resp.Err() != nil && !errors.Is(resp.Err(), redis.Nil) {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	actionError := ""
-	if !errors.Is(resp.Err(), redis.Nil) {
-		actionError = resp.Val()
-	}
-
-	writeResp(w, http.StatusOK, D{
-		"pending":      pending,
-		"info":         info,
-		"action_error": actionError,
-	})
+	writeResp(w, http.StatusOK, D{"jobs": jobsResp})
 }

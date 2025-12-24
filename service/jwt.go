@@ -29,7 +29,7 @@ func JWTVerify(token string) (jwt.MapClaims, error) {
 
 	parsed, err := parser.Parse(token, func(t *jwt.Token) (interface{}, error) {
 		if t.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-			return nil, fmt.Errorf("invalid method: " + t.Method.Alg())
+			return nil, fmt.Errorf("invalid method: %s", t.Method.Alg())
 		}
 		return jwtKey, nil
 	})

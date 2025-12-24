@@ -4,7 +4,6 @@ import (
 	"billing3/controller"
 	"billing3/database"
 	"billing3/service"
-	"billing3/service/email"
 	"billing3/service/extension"
 	"billing3/service/gateways"
 	"context"
@@ -52,9 +51,6 @@ func main() {
 	// database
 	database.Init()
 
-	// redis
-	database.InitRedis()
-
 	// gateway
 	err = gateways.InitDatabase()
 	if err != nil {
@@ -69,12 +65,14 @@ func main() {
 		panic(err)
 	}
 
-	// email
+	// jwt
 	service.InitJWT()
-	email.Init()
 
 	// cron jobs
 	service.InitCron()
+
+	// river
+	database.InitRiver()
 
 	// router
 	r := chi.NewRouter()
