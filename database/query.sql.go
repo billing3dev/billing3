@@ -1743,7 +1743,7 @@ func (q *Queries) UpdateService(ctx context.Context, arg UpdateServiceParams) er
 }
 
 const updateServiceCancelled = `-- name: UpdateServiceCancelled :exec
-UPDATE services SET cancellation_reason = $1, cancelled_at = $2, status = 'CANCELLED' WHERE id = $3
+UPDATE services SET cancellation_reason = $1, cancelled_at = $2 WHERE id = $3
 `
 
 type UpdateServiceCancelledParams struct {

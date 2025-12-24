@@ -332,6 +332,8 @@ func adminServiceUpdateStatus(w http.ResponseWriter, r *http.Request) {
 		req.CancellationReason.Valid = true
 
 		// update cancellation reason and cancel time
+		// this does not change the status
+		// status change is handled below
 		err := database.Q.UpdateServiceCancelled(r.Context(), database.UpdateServiceCancelledParams{
 			CancellationReason: req.CancellationReason,
 			CancelledAt:        types.Timestamp{Timestamp: pgtype.Timestamp{Time: time.Now(), Valid: true}},

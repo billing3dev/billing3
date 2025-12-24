@@ -606,6 +606,10 @@ func (p *PVE) Action(serviceId int32, action string) error {
 	case "unsuspend":
 		return nil
 	case "terminate":
+		err = p.qemuPoweroff(serviceId, true, vmType == "lxc")
+		if err != nil {
+			return fmt.Errorf("terminate: force poweroff: %w", err)
+		}
 		return p.qemuDelete(serviceId, vmType == "lxc")
 	case "create":
 		return p.createService(serviceId)
@@ -735,7 +739,22 @@ func (p *PVE) getQemuVmInfo(serviceId int32) (*pveVmInfo, error) {
 }
 
 func (p *PVE) ClientPage(w http.ResponseWriter, serviceId int32) error {
-	return p.AdminPage(w, serviceId)
+	info, err := p.getQemuVmInfo(serviceId)
+	if err != nil {
+		if errors.Is(err, errNoServerAssigned) {
+			io.WriteString(w, "<span style=\"font-family: sans-serif\">This service is not created</span>")
+			return nil
+		}
+		io.WriteString(w, "<span style=\"font-family: sans-serif\">Something went wrong. Please check server log.</span>")
+		return err
+	}
+
+	err = p.infoPage.Execute(w, info)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (p *PVE) AdminPage(w http.ResponseWriter, serviceId int32) error {
@@ -745,7 +764,7 @@ func (p *PVE) AdminPage(w http.ResponseWriter, serviceId int32) error {
 			io.WriteString(w, "<span style=\"font-family: sans-serif\">This service is not created</span>")
 			return nil
 		}
-		io.WriteString(w, "<span style=\"font-family: sans-serif\">Something went wrong. Please check server log.</span>")
+		io.WriteString(w, "<span style=\"font-family: sans-serif\">Error: "+template.HTMLEscapeString(err.Error())+"</span>")
 		return err
 	}
 

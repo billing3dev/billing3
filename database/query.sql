@@ -216,7 +216,7 @@ UPDATE services SET expires_at = $2 WHERE id = $1;
 SELECT COUNT(id) FROM services WHERE (status = 'PENDING' OR status = 'ACTIVE' OR status = 'SUSPENDED' OR status = 'UNPAID') AND (settings::jsonb ? 'server' AND (settings->>'server')::integer = @server::integer);
 
 -- name: UpdateServiceCancelled :exec
-UPDATE services SET cancellation_reason = $1, cancelled_at = $2, status = 'CANCELLED' WHERE id = $3;
+UPDATE services SET cancellation_reason = $1, cancelled_at = $2 WHERE id = $3;
 
 -- name: FindOverdueServices :many
 SELECT * FROM services WHERE (status = 'SUSPENDED' OR status = 'ACTIVE' OR status = 'PENDING') AND expires_at <= CURRENT_TIMESTAMP ORDER BY id;

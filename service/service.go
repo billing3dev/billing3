@@ -6,8 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"log/slog"
+
+	"github.com/jackc/pgx/v5"
 )
 
 const (
@@ -27,10 +28,6 @@ func ServiceAdminActions(ctx context.Context, serviceId int32) (*database.Servic
 		}
 		slog.Error("service actions", "err", err)
 		return nil, nil, ErrInternalError
-	}
-
-	if s.Status == ServiceCancelled {
-		return nil, nil, ErrServiceCancelled
 	}
 
 	ext, ok := extension.Extensions[s.Extension]
