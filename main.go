@@ -4,6 +4,7 @@ import (
 	"billing3/controller"
 	"billing3/database"
 	"billing3/service"
+	"billing3/service/email"
 	"billing3/service/extension"
 	"billing3/service/gateways"
 	"billing3/utils"
@@ -74,6 +75,9 @@ func main() {
 
 	// river
 	database.InitRiver()
+
+	// email
+	email.Init()
 
 	// router
 	r := chi.NewRouter()

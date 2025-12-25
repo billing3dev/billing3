@@ -6,16 +6,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 )
-
-type emailTaskArgs struct {
-	To      string `json:"to"`
-	Subject string `json:"subject"`
-	Body    string `json:"body"`
-}
 
 var username, password, endpoint, port, tlsType, from string
 
@@ -76,6 +71,17 @@ func sendmail(to, subject, body string) error {
 	}
 
 	return nil
+}
+
+// Init reads smtp settings from env variables and start background worker
+func Init() {
+	username = os.Getenv("SMTP_USERNAME")
+	password = os.Getenv("SMTP_PASSWORD")
+	endpoint = os.Getenv("SMTP_ENDPOINT")
+	port = os.Getenv("SMTP_PORT")
+	tlsType = os.Getenv("SMTP_TLS")
+	from = os.Getenv("SMTP_FROM")
+
 }
 
 func SendMailAsync(ctx context.Context, to, subject, body string) error {
