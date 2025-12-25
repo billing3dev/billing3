@@ -19,4 +19,8 @@ func InitCron() {
 	utils.NewCronJob(time.Hour, func() error {
 		return database.Q.DeleteExpiredSessions(context.Background())
 	}, "delete expired sessions")
+
+	utils.NewCronJob(time.Hour*24, func() error {
+		return GenerateRenewalInvoices()
+	}, "generate renewal invoices")
 }

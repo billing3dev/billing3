@@ -221,6 +221,18 @@ UPDATE services SET cancellation_reason = $1, cancelled_at = $2 WHERE id = $3;
 -- name: FindOverdueServices :many
 SELECT * FROM services WHERE (status = 'SUSPENDED' OR status = 'ACTIVE' OR status = 'PENDING') AND expires_at <= CURRENT_TIMESTAMP ORDER BY id;
 
+-- name: FindServicesForRenewal :many
+SELECT * FROM services 
+WHERE (status = 'ACTIVE' OR status = 'SUSPENDED') 
+AND expires_at <= (CURRENT_TIMESTAMP + interval '5 days')
+AND NOT EXISTS (
+    SELECT 1 FROM invoices 
+    JOIN invoice_items ON invoices.id = invoice_items.invoice_id 
+    WHERE invoice_items.item_id = services.id 
+    AND invoice_items.type = 'service' 
+    AND invoices.status = 'UNPAID'
+);
+
 -- GATEWAYS --
 
 -- name: ListGateways :many

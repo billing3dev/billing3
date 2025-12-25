@@ -347,3 +347,37 @@ func CloseOverdueInvoices() error {
 
 	return nil
 }
+
+func GenerateRenewalInvoices() error {
+	ctx := context.Background()
+
+	services, err := database.Q.FindServicesForRenewal(ctx)
+	if err != nil {
+		return fmt.Errorf("find services for renewal: %w", err)
+	}
+
+	for _, service := range services {
+		slog.Info("generating renewal invoice", "service_id", service.ID)
+
+		tx, err := database.Conn.Begin(ctx)
+		if err != nil {
+			slog.Error("begin tx", "err", err, "service_id", service.ID)
+			continue
+		}
+
+		qtx := database.Q.WithTx(tx)
+
+		_, err = CreateRenewalInvoice(ctx, qtx, service.ID, decimal.Zero)
+		if err != nil {
+			slog.Error("create renewal invoice", "err", err, "service_id", service.ID)
+			tx.Rollback(ctx)
+			continue
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			slog.Error("commit tx", "err", err, "service_id", service.ID)
+		}
+	}
+
+	return nil
+}

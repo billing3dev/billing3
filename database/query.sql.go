@@ -906,6 +906,52 @@ func (q *Queries) FindServiceByUser(ctx context.Context, userID int32) ([]Servic
 	return items, nil
 }
 
+const findServicesForRenewal = `-- name: FindServicesForRenewal :many
+SELECT id, label, user_id, status, cancellation_reason, billing_cycle, price, extension, settings, expires_at, created_at, cancelled_at FROM services 
+WHERE (status = 'ACTIVE' OR status = 'SUSPENDED') 
+AND expires_at <= (CURRENT_TIMESTAMP + interval '5 days')
+AND NOT EXISTS (
+    SELECT 1 FROM invoices 
+    JOIN invoice_items ON invoices.id = invoice_items.invoice_id 
+    WHERE invoice_items.item_id = services.id 
+    AND invoice_items.type = 'service' 
+    AND invoices.status = 'UNPAID'
+)
+`
+
+func (q *Queries) FindServicesForRenewal(ctx context.Context) ([]Service, error) {
+	rows, err := q.db.Query(ctx, findServicesForRenewal)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Service{}
+	for rows.Next() {
+		var i Service
+		if err := rows.Scan(
+			&i.ID,
+			&i.Label,
+			&i.UserID,
+			&i.Status,
+			&i.CancellationReason,
+			&i.BillingCycle,
+			&i.Price,
+			&i.Extension,
+			&i.Settings,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+			&i.CancelledAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findSessionByToken = `-- name: FindSessionByToken :one
 
 SELECT id, token, user_id, created_at, expires_at FROM sessions WHERE token = $1 AND expires_at > CURRENT_TIMESTAMP
