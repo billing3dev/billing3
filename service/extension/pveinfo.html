@@ -84,23 +84,28 @@
 <script>
     $(function() {
         $("#vnc-btn").click(async function() {
-            const resp = await fetch(location.href, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ action: "vnc" })
-            })
-            const data = await resp.json();
-            if (data.ok) {
-                window.open("/api/extension/pve/novnc?jwt=" + encodeURIComponent(data.jwt), "_blank");
-            } else {
-                console.error(data);
-                if (data.error) {
-                    alert("Error: " + data.error);
+            try {
+                const resp = await fetch(location.href, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ action: "vnc" })
+                })
+                const data = await resp.json();
+                if (data.ok) {
+                    window.open("/api/extension/pve/novnc?jwt=" + encodeURIComponent(data.jwt), "_blank");
                 } else {
-                    alert("Something went wrong. Please check server log.");
+                    console.error(data);
+                    if (data.error) {
+                        alert("Error: " + data.error);
+                    } else {
+                        alert("Something went wrong. Please check server log.");
+                    }
                 }
+            } catch (error) {
+                console.error(error);
+                alert("Something went wrong. Please check server log.");
             }
         })
         $("#os-btn").click(function() {
