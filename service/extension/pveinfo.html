@@ -60,9 +60,10 @@
     </div>
 
     <div class="mb-3">
-
-        <button id="vnc-btn" class="btn btn-primary">VNC</button>
-
+        <button id="vnc-btn" class="btn btn-primary">
+            <span class="spinner-border spinner-border-sm" aria-hidden="true" style="display: none;"></span>
+            VNC
+        </button>
     </div>
 
     
@@ -84,6 +85,8 @@
 <script>
     $(function() {
         $("#vnc-btn").click(async function() {
+            $("#vnc-btn .spinner-border").show();
+            $("#vnc-btn").attr("disabled", true);
             try {
                 const resp = await fetch(location.href, {
                     method: "POST",
@@ -106,6 +109,9 @@
             } catch (error) {
                 console.error(error);
                 alert("Something went wrong. Please check server log.");
+            } finally {
+                $("#vnc-btn .spinner-border").hide();
+                $("#vnc-btn").attr("disabled", false);
             }
         })
         $("#os-btn").click(function() {
