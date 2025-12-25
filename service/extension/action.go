@@ -84,7 +84,16 @@ var ErrActionRunning = errors.New("another action is running for this service")
 
 // DoActionAsync enqueues a task that executes the action, and change the status of the service to new status if
 // and only if the operation succeeds. ErrActionRunning is returned if the service already has a pending action.
+// The actions "create", "terminate", and "reinstall" are enqueued to a special queue that only allows one worker
+// to run at a time, to avoid race conditions on these operations.
 func DoActionAsync(ctx context.Context, ext string, serviceId int32, action string, newStatus string) error {
+	queue := river.QueueDefault
+	if action == "create" || action == "terminate" || action == "reinstall" {
+		queue = database.QueueVM
+	}
+
+	slog.Info("do action async", "ext", ext, "service_id", serviceId, "action", action, "new_status", newStatus, "queue", queue)
+
 	resp, err := database.River.Insert(ctx, ExtensionActionArgs{
 		ServiceId: serviceId,
 		Action:    action,
@@ -92,6 +101,7 @@ func DoActionAsync(ctx context.Context, ext string, serviceId int32, action stri
 		Extension: ext,
 	}, &river.InsertOpts{
 		MaxAttempts: 1,
+		Queue:       queue,
 		Metadata:    []byte(fmt.Sprintf("{\"service_id\": %d}", serviceId)),
 	})
 	if err != nil {

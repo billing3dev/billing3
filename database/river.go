@@ -15,12 +15,18 @@ var (
 	Workers                       = river.NewWorkers()
 )
 
+const (
+	// QueueVM only allows a single worker.
+	QueueVM = "vm_operations"
+)
+
 func InitRiver() {
 
 	var err error
 	River, err = river.NewClient(riverpgxv5.New(Conn), &river.Config{
 		Queues: map[string]river.QueueConfig{
-			river.QueueDefault: {MaxWorkers: 2},
+			river.QueueDefault: {MaxWorkers: 5},
+			QueueVM:            {MaxWorkers: 1},
 		},
 		Workers:    Workers,
 		JobTimeout: time.Minute * 5,
