@@ -189,7 +189,7 @@ func InvoiceAddPayment(ctx context.Context, invoiceId int32, description string,
 // OnInvoicePaid does the following things to services in the invoice:
 // - extend expiry date by billing cycle
 // - mark the service as PENDING if the service is previously UNPAID
-// - call the extension's create action if possible
+// - call the extension's create action if the service is previously UNPAID
 func OnInvoicePaid(invoiceId int32) {
 	slog.Info("on invoice paid", "invoice_id", invoiceId)
 
@@ -258,31 +258,32 @@ func OnInvoicePaid(invoiceId int32) {
 					slog.Error("on invoice paid", "err", err)
 					continue
 				}
+
+				// create service
+				ext, ok := extension.Extensions[s.Extension]
+				if !ok {
+					slog.Error("invalid extension", "service id", itemId, "extension", s.Extension)
+					continue
+				}
+
+				actions, err := ext.AdminActions(itemId)
+				if err != nil {
+					slog.Error("extension admin actions", "err", err, "service_id", itemId, "extension", s.Extension)
+					continue
+				}
+
+				if !slices.Contains(actions, "create") {
+					continue
+				}
+
+				slog.Info("create service", "service_id", itemId)
+
+				err = extension.DoActionAsync(ctx, s.Extension, itemId, "create", ServiceActive)
+				if err != nil {
+					slog.Error("do action async", "err", err)
+				}
 			}
 
-			// create service
-			ext, ok := extension.Extensions[s.Extension]
-			if !ok {
-				slog.Error("invalid extension", "service id", itemId, "extension", s.Extension)
-				continue
-			}
-
-			actions, err := ext.AdminActions(itemId)
-			if err != nil {
-				slog.Error("extension admin actions", "err", err, "service_id", itemId, "extension", s.Extension)
-				continue
-			}
-
-			if !slices.Contains(actions, "create") {
-				continue
-			}
-
-			slog.Info("create service", "service_id", itemId)
-
-			err = extension.DoActionAsync(ctx, s.Extension, itemId, "create", ServiceActive)
-			if err != nil {
-				slog.Error("do action async", "err", err)
-			}
 		}
 	}
 
