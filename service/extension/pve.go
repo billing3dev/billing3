@@ -18,21 +18,42 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/gorilla/websocket"
 
 	_ "embed"
 )
 
-//go:embed pveinfo.html
-var pveInfoHtml string
+var (
+
+	//go:embed pveinfo.html
+	pveInfoHtml string
+
+	//go:embed pvevnc.html
+	pveVncHtml string
+
+	pveWebsocketUpgrader = websocket.Upgrader{
+		HandshakeTimeout: time.Minute,
+	}
+
+	pveWebsocketDialer = websocket.Dialer{
+		HandshakeTimeout: time.Minute,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	}
+)
 
 var errNoServerAssigned = errors.New("no server assigned")
 
 type PVE struct {
 	httpClient http.Client
 	infoPage   *template.Template
+	vncPage    *template.Template
 }
 
 type pveResp[T any] struct {
@@ -723,6 +744,129 @@ func (p *PVE) Route(r chi.Router) error {
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "hello, world")
 	})
+	r.Get("/novnc", func(w http.ResponseWriter, r *http.Request) {
+
+		jwt := r.URL.Query().Get("jwt")
+
+		// verify jwt
+
+		jwtClaims, err := utils.JWTVerify(jwt)
+		if err != nil || jwtClaims["aud"] != "pve_vnc" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		r.Header.Set("Content-Type", "text/html")
+		err = p.vncPage.Execute(w, map[string]string{
+			"JWT":      jwt,
+			"Password": jwtClaims["vnc_ticket"].(string),
+		})
+		if err != nil {
+			slog.Error("failed to execute vnc page template", "err", err)
+		}
+
+	})
+	r.Get("/vncwebsocket", func(w http.ResponseWriter, r *http.Request) {
+
+		// verify jwt
+
+		jwtClaims, err := utils.JWTVerify(r.URL.Query().Get("jwt"))
+		if err != nil || jwtClaims["aud"] != "pve_vnc" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		vncPort := jwtClaims["vnc_port"].(string)
+		vncTicket := jwtClaims["vnc_ticket"].(string)
+
+		serviceId, err := strconv.Atoi(jwtClaims["sub"].(string))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		serviceSettings, serverSettings, err := p.getServiceSettings(int32(serviceId))
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			slog.Error("vnc websocket: get service settings", "err", err)
+			return
+		}
+
+		address := serverSettings["address"]
+		port := serverSettings["port"]
+		node := serverSettings["node"]
+		vmType := serviceSettings["vm_type"]
+		vmid := int(10000 + serviceId)
+		username := serverSettings["username"]
+		password := serverSettings["password"]
+		baseUrl := fmt.Sprintf("https://%s:%s/api2/json", address, port)
+
+		_, ticket, err := p.pveAuth(baseUrl, username, password)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			slog.Error("pve vnc auth", "err", err, "base", baseUrl, "service id", serviceId)
+			return
+		}
+
+		// proxy websocket
+
+		pveWebsocketUrl := &url.URL{
+			Scheme:   "wss",
+			Host:     fmt.Sprintf("%s:%s", address, port),
+			Path:     fmt.Sprintf("/api2/json/nodes/%s/%s/%d/vncwebsocket", node, vmType, vmid),
+			RawQuery: fmt.Sprintf("port=%s&vncticket=%s", vncPort, url.QueryEscape(vncTicket)),
+		}
+
+		wsConn, err := pveWebsocketUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			slog.Debug("websocket upgrade", "err", err)
+			return
+		}
+		defer wsConn.Close()
+
+		pveWsConn, pveWsResp, err := pveWebsocketDialer.Dial(pveWebsocketUrl.String(), http.Header{
+			"Cookie": []string{fmt.Sprintf("PVEAuthCookie=%s", ticket)},
+		})
+		if err != nil {
+			if errors.Is(err, websocket.ErrBadHandshake) {
+				body, _ := io.ReadAll(pveWsResp.Body)
+				slog.Error("pve websocket dial bad handshake", "status", pveWsResp.Status, "body", string(body), "service id", serviceId)
+			}
+			slog.Error("pve websocket dial", "err", err, "service id", serviceId)
+			return
+		}
+
+		defer pveWsConn.Close()
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		wsCopy := func(dst *websocket.Conn, src *websocket.Conn) {
+			defer wg.Done()
+			defer src.Close()
+			defer dst.Close()
+			for {
+				src.SetReadDeadline(time.Now().Add(time.Minute))
+				mt, message, err := src.ReadMessage()
+				if err != nil {
+					slog.Debug("websocket read", "err", err, "src", dst.RemoteAddr().String())
+					break
+				}
+				dst.SetWriteDeadline(time.Now().Add(time.Minute))
+				err = dst.WriteMessage(mt, message)
+				if err != nil {
+					slog.Debug("websocket write", "err", err, "src", dst.RemoteAddr().String())
+					break
+				}
+			}
+		}
+
+		go wsCopy(pveWsConn, wsConn)
+		go wsCopy(wsConn, pveWsConn)
+
+		wg.Wait()
+
+	})
 	return nil
 }
 
@@ -843,30 +987,35 @@ func (p *PVE) AdminPage(w http.ResponseWriter, r *http.Request, serviceId int32)
 			return nil
 		}
 
-		lxcTempalteList, ok := serviceSettings["lxc_template_list"]
-		if !ok {
-			w.WriteHeader(http.StatusInternalServerError)
-			return fmt.Errorf("lxc_template_list is not set in service settings")
-		}
-		validTemplates := strings.Split(lxcTempalteList, "\n")
-
-		if !slices.Contains(validTemplates, form.OS) {
-			w.WriteHeader(http.StatusBadRequest)
-			io.WriteString(w, "{\"error\": \"The selected OS is unavailable\"}")
-			return nil
-		}
-
-		serviceSettings["lxc_template"] = form.OS
-		err = database.Q.UpdateServiceSettings(r.Context(), database.UpdateServiceSettingsParams{
-			ID:       serviceId,
-			Settings: serviceSettings,
-		})
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return err
-		}
-
 		if form.Action == "reinstall" {
+
+			// reinstall
+
+			lxcTempalteList, ok := serviceSettings["lxc_template_list"]
+			if !ok {
+				w.WriteHeader(http.StatusInternalServerError)
+				return fmt.Errorf("lxc_template_list is not set in service settings")
+			}
+			validTemplates := strings.Split(lxcTempalteList, "\n")
+
+			if !slices.Contains(validTemplates, form.OS) {
+				w.WriteHeader(http.StatusBadRequest)
+				io.WriteString(w, "{\"error\": \"The selected OS is unavailable\"}")
+				return nil
+			}
+
+			serviceSettings["lxc_template"] = form.OS
+			err = database.Q.UpdateServiceSettings(r.Context(), database.UpdateServiceSettingsParams{
+				ID:       serviceId,
+				Settings: serviceSettings,
+			})
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return err
+			}
+
+			slog.Info("reinstall request", "service id", serviceId, "os", form.OS)
+
 			err := DoActionAsync(r.Context(), "PVE", serviceId, "reinstall", "")
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
@@ -875,6 +1024,70 @@ func (p *PVE) AdminPage(w http.ResponseWriter, r *http.Request, serviceId int32)
 			w.Header().Set("Content-Type", "application/json")
 			io.WriteString(w, "{\"ok\": true}")
 			return nil
+
+		} else if form.Action == "vnc" {
+
+			slog.Info("vnc request", "service id", serviceId)
+
+			// get pve websocket url
+
+			slog.Info("vnc websocket", "service id", serviceId)
+
+			serviceSettings, serverSettings, err := p.getServiceSettings(int32(serviceId))
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				slog.Error("vnc websocket: get service settings", "err", err)
+				return nil
+			}
+
+			vmType := serviceSettings["vm_type"]
+
+			address := serverSettings["address"]
+			port := serverSettings["port"]
+			username := serverSettings["username"]
+			password := serverSettings["password"]
+			node := serverSettings["node"]
+			baseUrl := fmt.Sprintf("https://%s:%s/api2/json", address, port)
+
+			csrf, ticket, err := p.pveAuth(baseUrl, username, password)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				slog.Error("pve vnc auth", "err", err, "base", baseUrl, "service id", serviceId)
+				return nil
+			}
+
+			vmid := int(10000 + serviceId)
+
+			resp := pveResp[struct {
+				Port   string `json:"port"`
+				Ticket string `json:"ticket"`
+			}]{}
+			err = p.apiAction("POST", fmt.Sprintf("%s/nodes/%s/%s/%d/vncproxy", baseUrl, node, vmType, vmid), url.Values{"websocket": []string{"1"}}, &resp, csrf, ticket)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				slog.Error("pve vnc proxy", "err", err, "base", baseUrl, "service id", serviceId)
+				return nil
+			}
+
+			claims := jwt.MapClaims{
+				"aud":        "pve_vnc",
+				"sub":        strconv.Itoa(int(serviceId)),
+				"vnc_port":   resp.Data.Port,
+				"vnc_ticket": resp.Data.Ticket,
+			}
+
+			jwtToken := utils.JWTSign(claims, time.Minute)
+
+			respJson := map[string]any{
+				"jwt": jwtToken,
+				"ok":  true,
+			}
+			respBytes, _ := json.Marshal(respJson)
+
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(respBytes)
+			return nil
+
 		}
 
 		w.WriteHeader(http.StatusBadRequest)
@@ -910,6 +1123,7 @@ func (p *PVE) Init() error {
 		},
 	}
 	p.infoPage = template.Must(template.New("pve_info").Parse(pveInfoHtml))
+	p.vncPage = template.Must(template.New("pve_vnc").Parse(pveVncHtml))
 	return nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"billing3/service"
 	"billing3/service/extension"
 	"billing3/service/gateways"
+	"billing3/utils"
 	"context"
 	"errors"
 	"log/slog"
@@ -66,7 +67,7 @@ func main() {
 	}
 
 	// jwt
-	service.InitJWT()
+	utils.InitJWT()
 
 	// cron jobs
 	service.InitCron()

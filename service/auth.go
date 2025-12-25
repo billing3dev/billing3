@@ -17,7 +17,7 @@ import (
 // SendVerificationEmail sends a verification email, which contains the link
 // to continue registration process
 func SendVerificationEmail(ctx context.Context, emailAddr string) error {
-	jwtSign := JWTSign(jwt.MapClaims{
+	jwtSign := utils.JWTSign(jwt.MapClaims{
 		"aud": "register",
 		"sub": emailAddr,
 	}, time.Minute*30)
@@ -36,7 +36,7 @@ func SendVerificationEmail(ctx context.Context, emailAddr string) error {
 // DecodeEmailVerificationToken decodes the token for email verification and return the email.
 // return empty string if token in invalid
 func DecodeEmailVerificationToken(token string) string {
-	claims, err := JWTVerify(token)
+	claims, err := utils.JWTVerify(token)
 	if err != nil {
 		slog.Debug("jwt verify error", "err", err)
 		return ""
