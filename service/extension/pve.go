@@ -966,6 +966,10 @@ func (p *PVE) AdminPage(w http.ResponseWriter, r *http.Request, serviceId int32)
 
 	serviceSettings, _, err := p.getServiceSettings(serviceId)
 	if err != nil {
+		if errors.Is(err, errNoServerAssigned) {
+			io.WriteString(w, "<span style=\"font-family: sans-serif\">This service is not created</span>")
+			return nil
+		}
 		w.WriteHeader(http.StatusInternalServerError)
 		return err
 	}
