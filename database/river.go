@@ -35,3 +35,13 @@ func InitRiver() {
 		panic(err)
 	}
 }
+
+func StopRiver() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*2)
+	defer cancel()
+	err := River.Stop(ctx)
+	if err != nil {
+		slog.Error("stop river", "err", err)
+		panic(err)
+	}
+}

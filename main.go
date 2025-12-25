@@ -113,6 +113,12 @@ func main() {
 		slog.Error("close http server", "err", err)
 	}
 
+	// stop river
+	database.StopRiver()
+
+	// stop cron jobs
+	utils.StopCronJobs()
+
 	// close database connection
 	ctx, cancel = context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
