@@ -1,6 +1,9 @@
 # billing3
 
 
+## Documentation
+
+See [docs](./docs).
 
 ## Development Setup
 
