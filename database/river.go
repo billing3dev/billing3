@@ -43,7 +43,7 @@ func InitRiver() {
 }
 
 func StopRiver() {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*2)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*5)
 	defer cancel()
 	err := River.Stop(ctx)
 	if err != nil {

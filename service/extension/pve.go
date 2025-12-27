@@ -287,6 +287,7 @@ func (p *PVE) createService(serviceId int32) error {
 		form.Set("ipconfig0", fmt.Sprintf("gw=%s,ip=%s", gateway, ip))
 		form.Set("nameserver", "8.8.8.8")
 		form.Set("searchdomain", ".")
+		form.Set("boot", "order=scsi0")
 		err = p.apiAction("POST", fmt.Sprintf("%s/nodes/%s/qemu/%d/config", baseUrl, node, vmid), form, &resp, csrf, ticket)
 		if err != nil {
 			return fmt.Errorf("pve: %w", err)
@@ -675,7 +676,7 @@ func (p *PVE) Action(serviceId int32, action string) error {
 	}
 
 	vmType := "qemu"
-	if _, ok := serviceSettings["vm_type"]; ok {
+	if _, ok := serviceSettings["vm_type"]; ok && vmType == "lxc" {
 		vmType = "lxc"
 	}
 
@@ -801,6 +802,10 @@ func (p *PVE) Route(r chi.Router) error {
 		password := serverSettings["password"]
 		baseUrl := fmt.Sprintf("https://%s:%s/api2/json", address, port)
 
+		if vmType == "kvm" {
+			vmType = "qemu"
+		}
+
 		_, ticket, err := p.pveAuth(baseUrl, username, password)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -877,6 +882,9 @@ func (p *PVE) getQemuVmInfo(serviceId int32) (*pveVmInfo, error) {
 	}
 
 	vmType := serviceSettings["vm_type"]
+	if vmType == "kvm" {
+		vmType = "qemu"
+	}
 
 	vmInfo := pveVmInfo{}
 
@@ -1045,6 +1053,9 @@ func (p *PVE) AdminPage(w http.ResponseWriter, r *http.Request, serviceId int32)
 			}
 
 			vmType := serviceSettings["vm_type"]
+			if vmType == "kvm" {
+				vmType = "qemu"
+			}
 
 			address := serverSettings["address"]
 			port := serverSettings["port"]
