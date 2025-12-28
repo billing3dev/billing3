@@ -675,7 +675,7 @@ func (p *PVE) Action(serviceId int32, action string) error {
 	}
 
 	vmType := "qemu"
-	if _, ok := serviceSettings["vm_type"]; ok && vmType == "lxc" {
+	if _, ok := serviceSettings["vm_type"]; ok && serviceSettings["vm_type"] == "lxc" {
 		vmType = "lxc"
 	}
 
