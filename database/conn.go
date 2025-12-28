@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -22,6 +23,8 @@ var Conn *pgxpool.Pool
 
 func Init() {
 	ctx := context.Background()
+
+	time.Sleep(time.Second * 30) // wait for postgres to be ready in docker-compose
 
 	config, err := pgxpool.ParseConfig(os.Getenv("DATABASE"))
 	if err != nil {
