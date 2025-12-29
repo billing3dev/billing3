@@ -24,7 +24,7 @@ var Conn *pgxpool.Pool
 func Init() {
 	ctx := context.Background()
 
-	time.Sleep(time.Second * 30) // wait for postgres to be ready in docker-compose
+	time.Sleep(time.Second * 5) // wait for postgres to be ready in docker-compose
 
 	config, err := pgxpool.ParseConfig(os.Getenv("DATABASE"))
 	if err != nil {
