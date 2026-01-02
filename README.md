@@ -17,7 +17,8 @@ services:
       - /srv/billing3db:/var/lib/postgresql
 
   backend:
-    image: ghcr.io/billing3dev/billing3:latest
+    image: ghcr.io/billing3dev/billing3:master
+    restart: unless-stopped
     depends_on:
       - db
     environment:
@@ -27,14 +28,15 @@ services:
       SMTP_PORT: 2465
       SMTP_TLS: TLS
       SMTP_FROM: mailer@example.com
-      JWT_KEY: 74fd6ebcbf1a9095d7b360543ae0285a # Replace with your own key, hex encoded.
+      JWT_KEY: 26d0e13a66846b993d0b3892ae0bfc38 # Replace with your own key, hex encoded.
       DATABASE: postgres://postgres:postgres@db:5432/postgres
       DEBUG: false
       PUBLIC_DOMAIN: https://billing3.example.com
 
 
   frontend:
-    image: ghcr.io/billing3dev/billing3-frontend:latest
+    image: ghcr.io/billing3dev/billing3-frontend:master
+    restart: unless-stopped
     depends_on:
       - backend
     ports:
