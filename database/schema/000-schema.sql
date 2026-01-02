@@ -123,3 +123,10 @@ CREATE TABLE IF NOT EXISTS servers
     extension VARCHAR(200) NOT NULL,
     settings  JSONB
 );
+
+CREATE TABLE IF NOT EXISTS settings
+(
+    id    SERIAL PRIMARY KEY,
+    key   VARCHAR(200) UNIQUE NOT NULL,
+    value TEXT         NOT NULL
+);

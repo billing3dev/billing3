@@ -279,3 +279,12 @@ SELECT * FROM servers WHERE id = $1;
 
 -- name: UpdateServerSettings :exec
 UPDATE servers SET settings = $1 WHERE id = $2;
+
+
+-- SETTINGS --
+
+-- name: FindSettingByKey :one
+SELECT * FROM settings WHERE key = $1;
+
+-- name: UpdateSetting :exec
+INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT ("key") DO UPDATE SET value = EXCLUDED.value;

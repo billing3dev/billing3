@@ -21,13 +21,18 @@ func Route(r *chi.Mux) {
 		w.Write([]byte("hello, world"))
 	})
 
+	// public routes
+	r.Group(func(r chi.Router) {
+		r.Get("/setting", publicSettings)
+	})
+
 	// auth
 	r.Group(func(r chi.Router) {
-		r.Post("/auth/login", login)
-		r.Post("/auth/register", register)
-		r.Post("/auth/register2", registerStep2)
-		r.Post("/auth/reset-password", resetPassword)
-		r.Post("/auth/reset-password2", resetPassword2)
+		r.With(middlewares.CloudflareTurnstile).Post("/auth/login", login)
+		r.With(middlewares.CloudflareTurnstile).Post("/auth/register", register)
+		r.With(middlewares.CloudflareTurnstile).Post("/auth/register2", registerStep2)
+		r.With(middlewares.CloudflareTurnstile).Post("/auth/reset-password", resetPassword)
+		r.With(middlewares.CloudflareTurnstile).Post("/auth/reset-password2", resetPassword2)
 
 		r.With(middlewares.MustAuth).Get("/auth/me", me)
 		r.With(middlewares.MustAuth).Post("/auth/logout", logout)
@@ -91,6 +96,9 @@ func Route(r *chi.Mux) {
 		r.Post("/admin/server", adminServerAdd)
 		r.Delete("/admin/server/{id}", adminServerDelete)
 		r.Get("/admin/server/extension-settings", adminExtensionServerSettings)
+
+		r.Get("/admin/setting", adminSettingsList)
+		r.Put("/admin/setting", adminSettingsUpdate)
 	})
 
 	// store
@@ -101,7 +109,7 @@ func Route(r *chi.Mux) {
 		r.Get("/store/product/{id}", getProduct)
 		r.Get("/store/product/{id}/options", getProductOptions)
 		r.Post("/store/calculate-price", calculatePrice)
-		r.With(middlewares.MustAuth).Post("/store/order", order)
+		r.With(middlewares.CloudflareTurnstile).With(middlewares.MustAuth).Post("/store/order", order)
 	})
 
 	// user

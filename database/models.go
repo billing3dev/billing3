@@ -109,6 +109,12 @@ type Session struct {
 	ExpiresAt types.Timestamp `json:"expires_at"`
 }
 
+type Setting struct {
+	ID    int32  `json:"id"`
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
 type User struct {
 	ID       int32       `json:"id"`
 	Email    string      `json:"email"`

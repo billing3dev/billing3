@@ -971,6 +971,19 @@ func (q *Queries) FindSessionByToken(ctx context.Context, token string) (Session
 	return i, err
 }
 
+const findSettingByKey = `-- name: FindSettingByKey :one
+
+SELECT id, key, value FROM settings WHERE key = $1
+`
+
+// SETTINGS --
+func (q *Queries) FindSettingByKey(ctx context.Context, key string) (Setting, error) {
+	row := q.db.QueryRow(ctx, findSettingByKey, key)
+	var i Setting
+	err := row.Scan(&i.ID, &i.Key, &i.Value)
+	return i, err
+}
+
 const findUserByEmail = `-- name: FindUserByEmail :one
 SELECT id, email, name, role, password, address, city, state, country, zip_code FROM users WHERE email = $1
 `
@@ -1870,6 +1883,20 @@ type UpdateSessionExpiryTimeParams struct {
 
 func (q *Queries) UpdateSessionExpiryTime(ctx context.Context, arg UpdateSessionExpiryTimeParams) error {
 	_, err := q.db.Exec(ctx, updateSessionExpiryTime, arg.Token, arg.ExpiresAt)
+	return err
+}
+
+const updateSetting = `-- name: UpdateSetting :exec
+INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT ("key") DO UPDATE SET value = EXCLUDED.value
+`
+
+type UpdateSettingParams struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+func (q *Queries) UpdateSetting(ctx context.Context, arg UpdateSettingParams) error {
+	_, err := q.db.Exec(ctx, updateSetting, arg.Key, arg.Value)
 	return err
 }
 
