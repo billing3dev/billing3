@@ -6,10 +6,11 @@ import (
 	"billing3/database/types"
 	"billing3/service"
 	"errors"
-	"github.com/jackc/pgx/v5/pgtype"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func calculatePrice(w http.ResponseWriter, r *http.Request) {
@@ -50,6 +51,21 @@ func order(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	// stock
+
+	if product.StockControl == service.StockControlEnabled {
+		rows, err := database.Q.AttemptDecreaseProductStock(r.Context(), int32(product.ID))
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			slog.Error("decrease product stock", "err", err, "product", product.ID)
+			return
+		}
+		if rows == 0 {
+			writeError(w, http.StatusBadRequest, "product is out of stock")
+			return
+		}
 	}
 
 	// start transaction

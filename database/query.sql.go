@@ -38,6 +38,18 @@ func (q *Queries) AddInvoicePayment(ctx context.Context, arg AddInvoicePaymentPa
 	return id, err
 }
 
+const attemptDecreaseProductStock = `-- name: AttemptDecreaseProductStock :execrows
+UPDATE products SET stock = stock - 1 WHERE id = $1 AND stock_control = 2 AND stock > 0
+`
+
+func (q *Queries) AttemptDecreaseProductStock(ctx context.Context, id int32) (int64, error) {
+	result, err := q.db.Exec(ctx, attemptDecreaseProductStock, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countServicesByServer = `-- name: CountServicesByServer :one
 SELECT COUNT(id) FROM services WHERE (status = 'PENDING' OR status = 'ACTIVE' OR status = 'SUSPENDED' OR status = 'UNPAID') AND (settings::jsonb ? 'server' AND (settings->>'server')::integer = $1::integer)
 `

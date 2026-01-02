@@ -82,6 +82,9 @@ SELECT products.id as id, products.name, products.description, products.category
 -- name: ListEnabledProducts :many
 SELECT * FROM products WHERE enabled ORDER BY id;
 
+-- name: AttemptDecreaseProductStock :execrows
+UPDATE products SET stock = stock - 1 WHERE id = $1 AND stock_control = 2 AND stock > 0;
+
 -- name: FindProductById :one
 SELECT * FROM products WHERE id = $1;
 
