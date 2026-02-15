@@ -59,6 +59,10 @@ func SearchInvoice(ctx context.Context, status string, userId int, page int, ite
 // Setup fee is added if setupFee is positive. Setup fee must not be negative.
 //
 // qtx should be a transaction. qtx is not commited.
+//
+// Due date is determined by the following rules:
+// - if the service is UNPAID, due date is 24 hours later. This is for newly created services that have not been paid yet.
+// - if the service is not UNPAID, due date is the expiry time of the service.
 func CreateRenewalInvoice(ctx context.Context, qtx *database.Queries, serviceId int32, setupFee decimal.Decimal) (int32, error) {
 	if setupFee.LessThan(decimal.Zero) {
 		return 0, fmt.Errorf("setup fee must not be negative")
@@ -94,13 +98,25 @@ func CreateRenewalInvoice(ctx context.Context, qtx *database.Queries, serviceId 
 
 	slog.Debug("create renewal invoice pass", "service", serviceId)
 
+	var dueAt time.Time
+
+	if service.Status == "UNPAID" {
+		dueAt = time.Now().Add(time.Hour * 24)
+	} else {
+		if service.ExpiresAt.Valid {
+			dueAt = service.ExpiresAt.Time
+		} else {
+			return 0, fmt.Errorf("service %d has no expiry time", serviceId)
+		}
+	}
+
 	// create the invoice
 	invoiceId, err := qtx.CreateInvoice(ctx, database.CreateInvoiceParams{
 		UserID:             service.UserID,
 		Status:             InvoiceUnpaid,
 		CancellationReason: pgtype.Text{Valid: false},
 		PaidAt:             types.Timestamp{Timestamp: pgtype.Timestamp{Valid: false}},
-		DueAt:              types.Timestamp{Timestamp: pgtype.Timestamp{Valid: true, Time: time.Now().UTC().Add(time.Hour * 168)}},
+		DueAt:              types.Timestamp{Timestamp: pgtype.Timestamp{Valid: true, Time: dueAt}},
 		Amount:             decimal.Sum(service.Price, setupFee),
 	})
 	if err != nil {
