@@ -57,7 +57,7 @@ river migrate-up --line main --database-url "postgres://postgres:postgres@db:543
 
 ## Documentation
 
-See [docs](./docs).
+See [wiki](https://github.com/billing3dev/billing3/wiki).
 
 ## Development
 
