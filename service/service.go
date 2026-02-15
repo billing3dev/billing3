@@ -89,7 +89,7 @@ func CancelOverdueServices() error {
 
 		err := extension.DoActionAsync(ctx, service.Extension, service.ID, "terminate", ServiceCancelled)
 		if err != nil {
-			return fmt.Errorf("db: %w", err)
+			slog.Error("terminate overdue service", "id", service.ID, "err", err, "extension", service.Extension)
 		}
 	}
 

@@ -322,7 +322,7 @@ func CloseOverdueInvoices() error {
 		for _, item := range items {
 			if item.Type == InvoiceItemService && item.ItemID.Valid {
 
-				service, err := database.Q.FindServiceById(ctx, item.ID)
+				service, err := database.Q.FindServiceById(ctx, item.ItemID.Int32)
 				if err != nil {
 					return fmt.Errorf("db: %w", err)
 				}
