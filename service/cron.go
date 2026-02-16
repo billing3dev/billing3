@@ -4,23 +4,26 @@ import (
 	"billing3/database"
 	"billing3/utils"
 	"context"
-	"time"
 )
 
 func InitCron() {
-	utils.NewCronJob(time.Hour, func() error {
+	utils.InitCronScheduler()
+
+	utils.NewCronJob("0 * * * *", func() error {
 		return CloseOverdueInvoices()
 	}, "close overdue invoices")
 
-	utils.NewCronJob(time.Hour, func() error {
+	utils.NewCronJob("0 * * * *", func() error {
 		return CancelOverdueServices()
 	}, "cancel overdue services")
 
-	utils.NewCronJob(time.Hour, func() error {
+	utils.NewCronJob("0 * * * *", func() error {
 		return database.Q.DeleteExpiredSessions(context.Background())
 	}, "delete expired sessions")
 
-	utils.NewCronJob(time.Hour*24, func() error {
+	utils.NewCronJob("0 0 * * *", func() error {
 		return GenerateRenewalInvoices()
 	}, "generate renewal invoices")
+
+	utils.StartCronScheduler()
 }
